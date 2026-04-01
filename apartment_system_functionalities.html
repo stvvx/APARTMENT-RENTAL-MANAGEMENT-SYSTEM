@@ -1,0 +1,259 @@
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-sans); }
+  .wrap { padding: 16px 0 24px; }
+  .section { margin-bottom: 20px; border-radius: var(--border-radius-lg); border: 1px solid var(--color-border-tertiary); overflow: hidden; }
+  .section-header { padding: 12px 18px; display: flex; align-items: center; gap: 10px; }
+  .section-header .badge { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 20px; }
+  .section-title { font-size: 15px; font-weight: 500; color: var(--color-text-primary); }
+  .section-subtitle { font-size: 12px; color: var(--color-text-secondary); margin-top: 2px; }
+  .modules { padding: 0 12px 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .module { border-radius: var(--border-radius-md); border: 1px solid var(--color-border-tertiary); padding: 10px 12px; background: var(--color-background-secondary); }
+  .module-title { font-size: 13px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 5px; }
+  .feature { font-size: 12px; color: var(--color-text-secondary); line-height: 1.6; display: flex; gap: 6px; align-items: baseline; }
+  .feature::before { content: "·"; color: var(--color-text-tertiary); flex-shrink: 0; }
+  .divider { height: 1px; background: var(--color-border-tertiary); margin: 0 18px 12px; }
+  .stack-badge { font-size: 11px; padding: 2px 7px; border-radius: 10px; font-weight: 500; background: var(--color-background-tertiary); color: var(--color-text-secondary); border: 1px solid var(--color-border-tertiary); }
+
+  /* Role colors */
+  .admin-hdr { background: #EAF3DE; }
+  .admin-badge { background: #3B6D11; color: #fff; }
+  @media (prefers-color-scheme: dark) {
+    .admin-hdr { background: #27500A; }
+    .admin-badge { background: #97C459; color: #173404; }
+  }
+  .landlord-hdr { background: #E6F1FB; }
+  .landlord-badge { background: #185FA5; color: #fff; }
+  @media (prefers-color-scheme: dark) {
+    .landlord-hdr { background: #0C447C; }
+    .landlord-badge { background: #85B7EB; color: #042C53; }
+  }
+  .tenant-hdr { background: #FAEEDA; }
+  .tenant-badge { background: #854F0B; color: #fff; }
+  @media (prefers-color-scheme: dark) {
+    .tenant-hdr { background: #633806; }
+    .tenant-badge { background: #EF9F27; color: #412402; }
+  }
+  .shared-hdr { background: #EEEDFE; }
+  .shared-badge { background: #534AB7; color: #fff; }
+  @media (prefers-color-scheme: dark) {
+    .shared-hdr { background: #3C3489; }
+    .shared-badge { background: #AFA9EC; color: #26215C; }
+  }
+
+  .tech-row { padding: 0 18px 14px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .tech-title { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 6px; padding: 0 18px; }
+</style>
+
+<div class="wrap">
+
+  <!-- Admin -->
+  <div class="section">
+    <div class="section-header admin-hdr">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+          <span class="section-title">Administrator</span>
+          <span class="badge admin-badge">Role 1</span>
+        </div>
+        <div class="section-subtitle">Manages overall system data, approves landlord accounts, monitors all activities</div>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div class="modules">
+      <div class="module">
+        <div class="module-title">Account & User Management</div>
+        <div class="feature">View all registered landlord accounts</div>
+        <div class="feature">Approve or reject landlord registrations</div>
+        <div class="feature">Suspend or deactivate user accounts</div>
+        <div class="feature">View tenant accounts system-wide</div>
+      </div>
+      <div class="module">
+        <div class="module-title">System Monitoring</div>
+        <div class="feature">View all apartment listings across landlords</div>
+        <div class="feature">Monitor all rental transactions and payments</div>
+        <div class="feature">View system-wide activity logs</div>
+        <div class="feature">Generate reports on occupancy & revenue</div>
+      </div>
+      <div class="module">
+        <div class="module-title">Data Integrity</div>
+        <div class="feature">Ensure each landlord's data is isolated</div>
+        <div class="feature">Oversee all tenant application records</div>
+        <div class="feature">Manage system-level configurations</div>
+      </div>
+      <div class="module">
+        <div class="module-title">Admin Dashboard</div>
+        <div class="feature">Summary metrics (total units, tenants, payments)</div>
+        <div class="feature">Pending approvals queue</div>
+        <div class="feature">Recent activity feed</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Landlord -->
+  <div class="section">
+    <div class="section-header landlord-hdr">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+          <span class="section-title">Landlord</span>
+          <span class="badge landlord-badge">Role 2</span>
+        </div>
+        <div class="section-subtitle">Registers, posts listings, manages tenants, tracks payments using a unique landlord ID</div>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div class="modules">
+      <div class="module">
+        <div class="module-title">Authentication</div>
+        <div class="feature">Register account (pending admin approval)</div>
+        <div class="feature">Login / logout with secure credentials</div>
+        <div class="feature">Unique landlord ID for data isolation</div>
+        <div class="feature">Update profile and account settings</div>
+      </div>
+      <div class="module">
+        <div class="module-title">Apartment Listing Management</div>
+        <div class="feature">Create new apartment/unit listings</div>
+        <div class="feature">Upload photos and unit details</div>
+        <div class="feature">Set rental price, floor, and unit type</div>
+        <div class="feature">Mark units as available or occupied</div>
+        <div class="feature">Edit or delete existing listings</div>
+      </div>
+      <div class="module">
+        <div class="module-title">Tenant Management</div>
+        <div class="feature">View all incoming rental applications</div>
+        <div class="feature">Approve or reject tenant applications</div>
+        <div class="feature">Assign approved tenants to units</div>
+        <div class="feature">View full tenant profile and history</div>
+        <div class="feature">Remove or end tenant contracts</div>
+      </div>
+      <div class="module">
+        <div class="module-title">Payment & Billing</div>
+        <div class="feature">Record manual rent payments per tenant</div>
+        <div class="feature">Track payment status (paid, pending, late)</div>
+        <div class="feature">View payment history and transaction logs</div>
+        <div class="feature">Send payment reminders to tenants</div>
+        <div class="feature">Generate billing statements/invoices</div>
+      </div>
+      <div class="module">
+        <div class="module-title">Occupancy Monitoring</div>
+        <div class="feature">View real-time occupancy per unit</div>
+        <div class="feature">Track lease start and end dates</div>
+        <div class="feature">Dashboard overview of all units</div>
+      </div>
+      <div class="module">
+        <div class="module-title">Communication</div>
+        <div class="feature">Receive and respond to tenant inquiries</div>
+        <div class="feature">Send announcements to tenants</div>
+        <div class="feature">In-app messaging / notification system</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tenant -->
+  <div class="section">
+    <div class="section-header tenant-hdr">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+          <span class="section-title">Tenant</span>
+          <span class="badge tenant-badge">Role 3</span>
+        </div>
+        <div class="section-subtitle">Browses without logging in, creates account when applying, manages rental profile</div>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div class="modules">
+      <div class="module">
+        <div class="module-title">Browsing (No Login Required)</div>
+        <div class="feature">View all available apartment listings</div>
+        <div class="feature">Filter by price, floor, unit type</div>
+        <div class="feature">View unit photos, details, and location</div>
+        <div class="feature">See landlord contact information</div>
+      </div>
+      <div class="module">
+        <div class="module-title">Account & Application</div>
+        <div class="feature">Register account when applying for a unit</div>
+        <div class="feature">Login / logout securely</div>
+        <div class="feature">Submit rental application with personal info</div>
+        <div class="feature">Upload required documents (ID, proof of income)</div>
+        <div class="feature">Track application status in real time</div>
+      </div>
+      <div class="module">
+        <div class="module-title">Rental Profile Management</div>
+        <div class="feature">View current unit assignment and lease terms</div>
+        <div class="feature">Update personal profile information</div>
+        <div class="feature">View lease start/end dates</div>
+      </div>
+      <div class="module">
+        <div class="module-title">Payment & Billing</div>
+        <div class="feature">View current outstanding balance</div>
+        <div class="feature">View payment history and receipts</div>
+        <div class="feature">Receive payment due notifications</div>
+      </div>
+      <div class="module">
+        <div class="module-title">Communication</div>
+        <div class="feature">Send inquiries to landlord about units</div>
+        <div class="feature">Receive messages and announcements</div>
+        <div class="feature">In-app notification for application updates</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Shared / System -->
+  <div class="section">
+    <div class="section-header shared-hdr">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+          <span class="section-title">System-Wide Features</span>
+          <span class="badge shared-badge">All Roles</span>
+        </div>
+        <div class="section-subtitle">Core infrastructure features shared across all user types</div>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div class="modules">
+      <div class="module">
+        <div class="module-title">Authentication & Security</div>
+        <div class="feature">JWT-based login / session management</div>
+        <div class="feature">Role-based access control (Admin / Landlord / Tenant)</div>
+        <div class="feature">Data isolation per landlord account</div>
+        <div class="feature">Password encryption (bcrypt)</div>
+      </div>
+      <div class="module">
+        <div class="module-title">Notifications</div>
+        <div class="feature">Push notifications (React Native)</div>
+        <div class="feature">In-app alerts for payments, applications</div>
+        <div class="feature">Email notifications for key events</div>
+      </div>
+      <div class="module">
+        <div class="module-title">Data Management</div>
+        <div class="feature">Secure cloud-based data storage</div>
+        <div class="feature">Organized records (no more paper forms)</div>
+        <div class="feature">Search and filter across records</div>
+      </div>
+      <div class="module">
+        <div class="module-title">Mobile App (React Native)</div>
+        <div class="feature">Cross-platform iOS & Android support</div>
+        <div class="feature">Responsive screens for all modules</div>
+        <div class="feature">Offline-friendly data caching</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tech Stack -->
+  <div style="margin-bottom:4px">
+    <div class="tech-title">Suggested tech stack for your JavaScript + React Native build</div>
+    <div class="tech-row">
+      <span class="stack-badge">Node.js + Express</span>
+      <span class="stack-badge">REST API</span>
+      <span class="stack-badge">JWT Auth</span>
+      <span class="stack-badge">MySQL / PostgreSQL</span>
+      <span class="stack-badge">React Native</span>
+      <span class="stack-badge">Expo</span>
+      <span class="stack-badge">Axios</span>
+      <span class="stack-badge">Firebase (notifications)</span>
+      <span class="stack-badge">Cloudinary (image uploads)</span>
+      <span class="stack-badge">bcrypt</span>
+    </div>
+  </div>
+
+</div>
