@@ -1,0 +1,5 @@
+const config = {
+  CLOUDINARY_CLOUD_NAME: process.env.REACT_APP_CLOUDINARY_CLOUD_NAME,
+  CLOUDINARY_PRESET_NAME: process.env.REACT_APP_CLOUDINARY_PRESET_NAME
+};
+export default config;
