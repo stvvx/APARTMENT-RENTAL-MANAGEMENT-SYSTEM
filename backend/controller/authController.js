@@ -19,7 +19,22 @@ export const register = async (req, res) => {
     }
     const user = new User({ name, email, password: hashedPassword, role, landlordId });
     await user.save();
-    res.status(201).json({ message: 'Registration successful.' });
+    const token = jwt.sign(
+      { userId: user._id, role: user.role, landlordId: user.landlordId },
+      process.env.JWT_SECRET,
+      { expiresIn: '1d' }
+    );
+    res.status(201).json({
+      message: 'Registration successful.',
+      token,
+      user: {
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        landlordId: user.landlordId,
+        profilePicture: user.profilePicture || ''
+      }
+    });
   } catch (err) {
     res.status(500).json({ message: 'Server error.' });
   }
@@ -41,7 +56,16 @@ export const login = async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '1d' }
     );
-    res.json({ token, user: { name: user.name, email: user.email, role: user.role, landlordId: user.landlordId } });
+    res.json({
+      token,
+      user: {
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        landlordId: user.landlordId,
+        profilePicture: user.profilePicture || ''
+      }
+    });
   } catch (err) {
     res.status(500).json({ message: 'Server error.' });
   }

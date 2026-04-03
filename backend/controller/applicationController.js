@@ -1,6 +1,7 @@
 import Application from '../model/Application.js';
 import Apartment from '../model/Apartment.js';
 import User from '../model/User.js';
+import Payment from '../model/Payment.js';
 
 // Tenant applies for an apartment
 export const applyForApartment = async (req, res) => {
@@ -145,8 +146,8 @@ export const cancelApplication = async (req, res) => {
 export const updateApplicationStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body; // 'approved', 'rejected', or 'cancelled'
-    if (!['approved', 'rejected', 'cancelled'].includes(status)) {
+    const { status } = req.body; // 'approved', 'rejected', 'cancelled', or 'ended'
+    if (!['approved', 'rejected', 'cancelled', 'ended'].includes(status)) {
       console.error(`[UPDATE STATUS] Invalid status: ${status}`);
       return res.status(400).json({ message: 'Invalid status.' });
     }
@@ -192,11 +193,48 @@ export const updateApplicationStatus = async (req, res) => {
         console.error(`[UPDATE STATUS] Landlord cannot cancel applications. User: ${req.user.userId}`);
         return res.status(403).json({ message: 'Landlord cannot cancel applications.' });
       }
+      
+      // Landlord can end approved contracts
+      if (status === 'ended') {
+        if (application.status !== 'approved') {
+          console.warn(`[UPDATE STATUS] Can only end approved contracts. Current status: ${application.status}`);
+          return res.status(400).json({ message: 'Can only end approved contracts.' });
+        }
+        application.status = 'ended';
+        // Set apartment back to available
+        application.apartment.isAvailable = true;
+        await application.apartment.save();
+        await application.save();
+        console.log(`[UPDATE STATUS] Contract ended by landlord. AppID: ${id}`);
+        return res.json({ message: 'Contract ended.' });
+      }
+      
       application.status = status;
       await application.save();
       if (status === 'approved') {
         application.apartment.isAvailable = false;
         await application.apartment.save();
+        
+        // Create monthly payment record for tenant
+        try {
+          const dueDate = new Date();
+          dueDate.setDate(1); // Set to 1st of next month
+          dueDate.setMonth(dueDate.getMonth() + 1);
+          
+          const payment = new Payment({
+            tenant: application.tenant,
+            apartment: application.apartment._id,
+            landlord: application.apartment.landlord,
+            amount: application.apartment.price,
+            dueDate: dueDate,
+            status: 'unpaid'
+          });
+          await payment.save();
+          console.log(`[UPDATE STATUS] Monthly payment created for tenant. PaymentID: ${payment._id}`);
+        } catch (paymentErr) {
+          console.error(`[UPDATE STATUS] Error creating payment:`, paymentErr);
+          // Don't fail the approval if payment creation fails
+        }
       }
       console.log(`[UPDATE STATUS] Application ${status} by landlord. AppID: ${id}`);
       return res.json({ message: `Application ${status}.` });

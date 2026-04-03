@@ -12,6 +12,17 @@ const userSchema = new mongoose.Schema({
   landlordId: { type: String }, // Only for landlords
   approved: { type: Boolean, default: false }, // Only for landlords
   active: { type: Boolean, default: true }, // For account suspension
+  profilePicture: { type: String, default: '' },
+  wishlist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Apartment' }], // Wishlist of apartment IDs
+  landlordApplication: {
+    name: String,
+    email: String,
+    idDocumentURL: String,
+    idDocumentMimeType: String,
+    idDocumentOriginalName: String,
+    appliedAt: Date,
+    status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' }
+  },
   createdAt: { type: Date, default: Date.now }
 });
 

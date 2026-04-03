@@ -3,6 +3,7 @@ import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, Ta
 
 export default function TenantManagement() {
   const [applications, setApplications] = useState([]);
+  const [payments, setPayments] = useState({});
   const [tenantProfile, setTenantProfile] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [applicationOpen, setApplicationOpen] = useState(false);
@@ -16,6 +17,28 @@ export default function TenantManagement() {
     })
       .then(res => res.json())
       .then(data => setApplications(Array.isArray(data) ? data : data.applications || []));
+  }, [token]);
+
+  // Fetch payments for landlord
+  useEffect(() => {
+    fetch("http://localhost:5000/api/payments/landlord", {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          const paymentsByApartment = {};
+          data.forEach(payment => {
+            const apartmentId = payment.apartment?._id || payment.apartment;
+            if (!paymentsByApartment[apartmentId]) {
+              paymentsByApartment[apartmentId] = [];
+            }
+            paymentsByApartment[apartmentId].push(payment);
+          });
+          setPayments(paymentsByApartment);
+        }
+      })
+      .catch(err => console.error('Error fetching payments:', err));
   }, [token]);
 
   // Approve or reject application
@@ -46,17 +69,31 @@ export default function TenantManagement() {
 
   // Remove/end contract (set status to ended or remove tenant from unit)
   const handleEndContract = async (applicationId) => {
-    await fetch(`http://localhost:5000/api/applications/${applicationId}/status`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ status: "ended" })
-    });
-    // Refresh applications
-    fetch("http://localhost:5000/api/applications/landlord", {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(res => res.json())
-      .then(data => setApplications(Array.isArray(data) ? data : data.applications || []));
+    if (!window.confirm("Are you sure you want to end this lease contract? The apartment will become available for new applications.")) {
+      return;
+    }
+    try {
+      const res = await fetch(`http://localhost:5000/api/applications/${applicationId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: "ended" })
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        alert("Error ending contract: " + (errData.message || "Unknown error"));
+        return;
+      }
+      // Refresh applications
+      const res2 = await fetch("http://localhost:5000/api/applications/landlord", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res2.json();
+      setApplications(Array.isArray(data) ? data : data.applications || []);
+      alert("Contract ended successfully!");
+    } catch (err) {
+      console.error("Error ending contract:", err);
+      alert("Error ending contract: " + err.message);
+    }
   };
 
   // View application details
@@ -77,34 +114,69 @@ export default function TenantManagement() {
               <TableCell>Applicant</TableCell>
               <TableCell>Unit</TableCell>
               <TableCell>Status</TableCell>
+              <TableCell>Monthly Payment</TableCell>
               <TableCell>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {applications.map((app, idx) => (
-              <TableRow key={idx}>
-                <TableCell>{app.tenant?.name || "-"}</TableCell>
-                <TableCell>{app.apartment?.title || app.apartment?.unitType || "-"}</TableCell>
-                <TableCell>{app.status}</TableCell>
-                <TableCell>
-                  <Button size="small" variant="outlined" onClick={() => handleViewApplication(app)} sx={{ mr: 1 }}>View </Button>
-                  {app.status === "pending" && (
-                    <>
-                      <Button size="small" color="success" onClick={() => handleStatus(app._id, "approved")}>Approve</Button>
-                      <Button size="small" color="error" onClick={() => handleStatus(app._id, "rejected")}>Reject</Button>
-                    </>
-                  )}
-                  {app.status === "approved" && (
-                    <>
-                      <Button size="small" onClick={() => handleViewProfile(app.tenant)}>View Profile</Button>
-                      <Button size="small" color="warning" onClick={() => handleEndContract(app._id)}>End Contract</Button>
-                    </>
-                  )}
-                  {app.status === "rejected" && <Typography color="error">Rejected</Typography>}
-                  {app.status === "ended" && <Typography color="warning.main">Ended</Typography>}
-                </TableCell>
-              </TableRow>
-            ))}
+            {applications.map((app, idx) => {
+              const apartmentId = app.apartment?._id;
+              const apartmentPayments = payments[apartmentId] || [];
+              const latestPayment = apartmentPayments.length > 0 ? apartmentPayments[apartmentPayments.length - 1] : null;
+              
+              return (
+                <TableRow key={idx}>
+                  <TableCell>{app.tenant?.name || "-"}</TableCell>
+                  <TableCell>{app.apartment?.title || app.apartment?.unitType || "-"}</TableCell>
+                  <TableCell>
+                    {app.status === "pending" && <Typography color="warning.main" sx={{ fontWeight: "bold" }}>Pending</Typography>}
+                    {app.status === "approved" && <Typography color="success.main" sx={{ fontWeight: "bold" }}>Approved</Typography>}
+                    {app.status === "rejected" && <Typography color="error" sx={{ fontWeight: "bold" }}>Rejected</Typography>}
+                    {app.status === "ended" && <Typography sx={{ color: "#616161", fontWeight: "bold" }}>Contract Ended</Typography>}
+                    {app.status === "cancelled" && <Typography sx={{ color: "#9e9e9e", fontWeight: "bold" }}>Cancelled</Typography>}
+                  </TableCell>
+                  <TableCell>
+                    {app.status === "approved" ? (
+                      latestPayment ? (
+                        <Box>
+                          <Typography variant="body2">
+                            {latestPayment.status === "paid" && <span style={{ color: "#27ae60", fontWeight: "bold" }}>✓ Paid</span>}
+                            {latestPayment.status === "unpaid" && <span style={{ color: "#e74c3c", fontWeight: "bold" }}>⚠ Unpaid</span>}
+                            {latestPayment.status === "partial" && <span style={{ color: "#f39c12", fontWeight: "bold" }}>⚠ Partial</span>}
+                            {latestPayment.status === "late" && <span style={{ color: "#c0392b", fontWeight: "bold" }}>✕ Late</span>}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: "gray" }}>
+                            ₱{latestPayment.amount?.toLocaleString() || 0} due {new Date(latestPayment.dueDate).toLocaleDateString()}
+                          </Typography>
+                        </Box>
+                      ) : (
+                        <Typography variant="body2" sx={{ color: "gray" }}>- No payment yet</Typography>
+                      )
+                    ) : (
+                      <Typography variant="body2" sx={{ color: "gray" }}>-</Typography>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Button size="small" variant="outlined" onClick={() => handleViewApplication(app)} sx={{ mr: 1 }}>View </Button>
+                    {app.status === "pending" && (
+                      <>
+                        <Button size="small" color="success" onClick={() => handleStatus(app._id, "approved")}>Approve</Button>
+                        <Button size="small" color="error" onClick={() => handleStatus(app._id, "rejected")}>Reject</Button>
+                      </>
+                    )}
+                    {app.status === "approved" && (
+                      <>
+                        <Button size="small" onClick={() => handleViewProfile(app.tenant)}>Profile</Button>
+                        <Button size="small" color="warning" onClick={() => handleEndContract(app._id)}>End Lease</Button>
+                      </>
+                    )}
+                    {app.status === "rejected" && <Typography variant="caption" color="error">Rejected</Typography>}
+                    {app.status === "ended" && <Typography variant="caption" sx={{ color: "#616161" }}>Lease Ended</Typography>}
+                    {app.status === "cancelled" && <Typography variant="caption" sx={{ color: "#9e9e9e" }}>Cancelled</Typography>}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </TableContainer>

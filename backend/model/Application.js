@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const applicationSchema = new mongoose.Schema({
   tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   apartment: { type: mongoose.Schema.Types.ObjectId, ref: 'Apartment', required: true },
-  status: { type: String, enum: ['pending', 'approved', 'rejected', 'cancelled'], default: 'pending' },
+  status: { type: String, enum: ['pending', 'approved', 'rejected', 'cancelled', 'ended'], default: 'pending' },
   message: { type: String },
   documents: [String], // URLs or file references
   createdAt: { type: Date, default: Date.now },

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-export default function LandlordHeader() {
+export default function AdminHeader() {
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
   const user = JSON.parse(localStorage.getItem("user"));
@@ -13,15 +13,15 @@ export default function LandlordHeader() {
     navigate("/login");
   };
 
+  // Admin logo SVG
   const Logo = () => (
     <svg width="32" height="32" viewBox="0 0 32 32" onClick={() => navigate("/")} style={{ cursor: "pointer" }}>
       <circle cx="16" cy="16" r="15" fill="none" stroke="#FF385C" strokeWidth="1.5" />
       <path
-        d="M10 14 L16 10 L22 14 L22 22 Q22 24 20 24 L12 24 Q10 24 10 22 Z M14 24 L14 18 L18 18 L18 24"
+        d="M10 18 H22 M10 14 H22 M10 22 H22 M10 18 L10 26 M22 18 L22 26 M12 12 L20 12 L20 16 L12 16 Z"
         fill="none"
         stroke="#FF385C"
         strokeWidth="1.5"
-        strokeLinejoin="round"
       />
     </svg>
   );
@@ -57,7 +57,7 @@ export default function LandlordHeader() {
             gap: 12,
             cursor: "pointer",
           }}
-          onClick={() => navigate("/landlord/dashboard")}
+          onClick={() => navigate("/admin/dashboard")}
         >
           <Logo />
           <span
@@ -68,7 +68,7 @@ export default function LandlordHeader() {
               letterSpacing: "-0.5px",
             }}
           >
-            EasRent Host
+            EasRent Admin
           </span>
         </div>
 
@@ -82,9 +82,9 @@ export default function LandlordHeader() {
           }}
         >
           {[
-            { label: "Dashboard", path: "/landlord/dashboard" },
-            { label: "My Listings", path: "/landlord/dashboard" },
-            { label: "Tenants", path: "/landlord/dashboard" },
+            { label: "Dashboard", path: "/admin/dashboard" },
+            { label: "Apartments", path: "/admin/apartments" },
+            { label: "Users", path: "/admin/users" },
           ].map((item) => (
             <button
               key={item.label}
@@ -108,9 +108,15 @@ export default function LandlordHeader() {
           ))}
         </nav>
 
-        {/* Right Section */}
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          {token ? (
+        {/* Right Section - User Actions */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 16,
+          }}
+        >
+          {token && (
             <div style={{ position: "relative" }}>
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
@@ -120,24 +126,22 @@ export default function LandlordHeader() {
                   gap: 12,
                   background: "none",
                   border: "1px solid #ddd",
-                  padding: "8px 12px",
+                  padding: "8px 12px 8px 16px",
                   borderRadius: 24,
                   cursor: "pointer",
                   transition: "all 0.2s",
                   fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
+                  e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.12)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.boxShadow = "none";
                 }}
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#222" strokeWidth="2">
-                  <line x1="3" y1="6" x2="21" y2="6" />
-                  <line x1="3" y1="12" x2="21" y2="12" />
-                  <line x1="3" y1="18" x2="21" y2="18" />
-                </svg>
+                <span style={{ fontSize: 14, fontWeight: 600, color: "#222" }}>
+                  ☰
+                </span>
                 <div
                   style={{
                     width: 32,
@@ -152,41 +156,64 @@ export default function LandlordHeader() {
                     fontWeight: 700,
                   }}
                 >
-                  {user?.name?.charAt(0)?.toUpperCase() || "L"}
+                  {user?.name ? user.name[0].toUpperCase() : "A"}
                 </div>
               </button>
 
+              {/* Dropdown Menu */}
               {userMenuOpen && (
                 <div
                   style={{
                     position: "absolute",
                     top: "100%",
                     right: 0,
-                    marginTop: 12,
                     background: "#fff",
                     border: "1px solid #ddd",
                     borderRadius: 12,
-                    boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-                    minWidth: 200,
-                    overflow: "hidden",
-                    zIndex: 1000,
+                    marginTop: 8,
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                    zIndex: 200,
                   }}
                 >
-                  <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0", fontSize: 13, color: "#717171" }}>
-                    {user?.email}
-                  </div>
                   <button
                     onClick={() => {
-                      navigate("/landlord/dashboard");
                       setUserMenuOpen(false);
+                      navigate("/admin/profile");
                     }}
                     style={{
+                      display: "block",
                       width: "100%",
-                      textAlign: "left",
-                      background: "none",
+                      padding: "12px 20px",
                       border: "none",
-                      padding: "12px 16px",
+                      background: "none",
+                      textAlign: "left",
                       fontSize: 14,
+                      fontWeight: 500,
+                      color: "#222",
+                      cursor: "pointer",
+                      transition: "background 0.2s",
+                      borderRadius: "12px 12px 0 0",
+                      fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+                    }}
+                    onMouseEnter={(e) => (e.target.style.background = "#f5f5f5")}
+                    onMouseLeave={(e) => (e.target.style.background = "none")}
+                  >
+                    My Profile
+                  </button>
+                  <button
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      navigate("/admin/settings");
+                    }}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      padding: "12px 20px",
+                      border: "none",
+                      background: "none",
+                      textAlign: "left",
+                      fontSize: 14,
+                      fontWeight: 500,
                       color: "#222",
                       cursor: "pointer",
                       transition: "background 0.2s",
@@ -195,7 +222,7 @@ export default function LandlordHeader() {
                     onMouseEnter={(e) => (e.target.style.background = "#f5f5f5")}
                     onMouseLeave={(e) => (e.target.style.background = "none")}
                   >
-                    My Listings
+                    Settings
                   </button>
                   <div style={{ height: 1, background: "#ebebeb", margin: "4px 0" }} />
                   <button
@@ -204,15 +231,18 @@ export default function LandlordHeader() {
                       handleLogout();
                     }}
                     style={{
+                      display: "block",
                       width: "100%",
-                      textAlign: "left",
-                      background: "none",
+                      padding: "12px 20px",
                       border: "none",
-                      padding: "12px 16px",
+                      background: "none",
+                      textAlign: "left",
                       fontSize: 14,
+                      fontWeight: 500,
                       color: "#FF385C",
                       cursor: "pointer",
                       transition: "background 0.2s",
+                      borderRadius: "0 0 12px 12px",
                       fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
                     }}
                     onMouseEnter={(e) => (e.target.style.background = "#fff5f5")}
@@ -223,47 +253,6 @@ export default function LandlordHeader() {
                 </div>
               )}
             </div>
-          ) : (
-            <>
-              <button
-                onClick={() => navigate("/login")}
-                style={{
-                  background: "none",
-                  border: "none",
-                  padding: "10px 16px",
-                  fontSize: 14,
-                  fontWeight: 600,
-                  color: "#222",
-                  cursor: "pointer",
-                  transition: "all 0.2s",
-                  borderRadius: 24,
-                  fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
-                }}
-                onMouseEnter={(e) => (e.target.style.background = "#f5f5f5")}
-                onMouseLeave={(e) => (e.target.style.background = "none")}
-              >
-                Login
-              </button>
-              <button
-                onClick={() => navigate("/register")}
-                style={{
-                  background: "#FF385C",
-                  color: "#fff",
-                  border: "none",
-                  padding: "12px 24px",
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  borderRadius: 24,
-                  transition: "all 0.2s",
-                  fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
-                }}
-                onMouseEnter={(e) => (e.target.style.background = "#dc3545")}
-                onMouseLeave={(e) => (e.target.style.background = "#FF385C")}
-              >
-                Sign up
-              </button>
-            </>
           )}
         </div>
       </div>

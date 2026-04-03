@@ -57,6 +57,19 @@ router.get('/tenant/:id', authenticateToken, authorizeRoles('tenant'), async (re
   }
 });
 
+// Public: Get apartment details by ID
+router.get('/:id', async (req, res) => {
+  try {
+    const apartment = await Apartment.findById(req.params.id).populate('landlord', 'name email');
+    if (!apartment) {
+      return res.status(404).json({ message: 'Apartment not found.' });
+    }
+    res.json(apartment);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
 // All routes below require landlord authentication
 router.use(authenticateToken, authorizeRoles('landlord'));
 

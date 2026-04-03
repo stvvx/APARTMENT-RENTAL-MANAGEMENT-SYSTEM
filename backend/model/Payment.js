@@ -7,8 +7,10 @@ const paymentSchema = new mongoose.Schema({
   amount: { type: Number, required: true },
   dueDate: { type: Date, required: true },
   paidDate: { type: Date },
-  status: { type: String, enum: ['paid', 'pending', 'late'], default: 'pending' },
+  status: { type: String, enum: ['paid', 'unpaid', 'pending', 'late', 'partial'], default: 'unpaid' },
   method: { type: String }, // e.g., cash, bank transfer
+  cardType: { type: String, enum: ['visa', 'mastercard'] },
+  cardLast4: { type: String },
   createdAt: { type: Date, default: Date.now }
 });
 

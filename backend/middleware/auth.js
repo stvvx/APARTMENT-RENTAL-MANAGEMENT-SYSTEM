@@ -6,8 +6,9 @@ export function authenticateToken(req, res, next) {
   if (!token) return res.status(401).json({ message: 'No token provided.' });
   jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
     if (err) return res.status(403).json({ message: 'Invalid token.' });
-    // Normalize user ID
-    user._id = user._id || user.id || user.userId;
+    // Normalize user ID - JWT contains userId
+    user._id = user.userId;
+    user.id = user.userId;
     req.user = user;
     next();
   });

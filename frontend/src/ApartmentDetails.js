@@ -1,67 +1,488 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { Box, Typography, CardMedia, Button, CircularProgress, Container } from "@mui/material";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { Box, Typography, Button, CircularProgress } from "@mui/material";
+
+const fontLink = document.createElement("link");
+fontLink.rel = "stylesheet";
+fontLink.href = "https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;500;600;700&display=swap";
+document.head.appendChild(fontLink);
 
 export default function ApartmentDetails() {
   const { id } = useParams();
-  const [apartment, setApartment] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const location = useLocation();
+  const routedApartment =
+    location.state?.apartment && location.state.apartment._id === id
+      ? location.state.apartment
+      : null;
+  const [apartment, setApartment] = useState(routedApartment);
+  const [loading, setLoading] = useState(!routedApartment);
+  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const navigate = useNavigate();
 
   useEffect(() => {
     async function fetchApartment() {
-      setLoading(true);
+      if (routedApartment) {
+        setApartment(routedApartment);
+      } else {
+        setLoading(true);
+      }
+
       try {
         const res = await fetch(`http://localhost:5000/api/apartments/${id}`);
         const data = await res.json();
-        setApartment(data);
+        if (!res.ok || !data?._id) {
+          if (!routedApartment) {
+            setApartment(null);
+          }
+        } else {
+          setApartment(data);
+        }
       } catch {
-        setApartment(null);
+        if (!routedApartment) {
+          setApartment(null);
+        }
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     fetchApartment();
-  }, [id]);
+  }, [id, routedApartment]);
 
-  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 6 }}><CircularProgress /></Box>;
-  if (!apartment) return <Typography sx={{ mt: 6, textAlign: 'center' }}>Apartment not found.</Typography>;
+  useEffect(() => {
+    setActivePhotoIndex(0);
+  }, [id, apartment?._id]);
+
+  const styles = {
+    container: {
+      background: "#fff",
+      minHeight: "100vh",
+      fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+    },
+    header: {
+      padding: "20px 40px",
+      borderBottom: "1px solid #eee",
+      display: "flex",
+      alignItems: "center",
+      gap: 16,
+    },
+    backBtn: {
+      background: "none",
+      border: "1px solid #ddd",
+      padding: "10px 16px",
+      borderRadius: 12,
+      cursor: "pointer",
+      fontSize: 14,
+      fontWeight: 600,
+      color: "#222",
+      transition: "all 0.2s",
+    },
+    content: {
+      maxWidth: 1200,
+      margin: "0 auto",
+      padding: "40px",
+    },
+    imageGallery: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 10,
+      marginBottom: 40,
+    },
+    mainPhotoWrap: {
+      borderRadius: 16,
+      overflow: "hidden",
+      background: "#f3f3f3",
+      aspectRatio: "16 / 9",
+    },
+    mainImage: {
+      width: "100%",
+      height: "100%",
+      objectFit: "cover",
+      display: "block",
+    },
+    thumbRail: {
+      display: "flex",
+      gap: 10,
+      overflowX: "auto",
+      paddingBottom: 2,
+    },
+    thumbButton: {
+      borderRadius: 10,
+      overflow: "hidden",
+      border: "2px solid transparent",
+      padding: 0,
+      background: "none",
+      cursor: "pointer",
+      flexShrink: 0,
+      width: 110,
+      height: 76,
+    },
+    activeThumbButton: {
+      border: "2px solid #FF385C",
+    },
+    thumbImage: {
+      width: "110px",
+      height: "76px",
+      objectFit: "cover",
+      display: "block",
+    },
+    titleSection: {
+      marginBottom: 40,
+    },
+    title: {
+      fontSize: 32,
+      fontWeight: 700,
+      color: "#222",
+      marginBottom: 12,
+      letterSpacing: "-0.5px",
+    },
+    subtitle: {
+      fontSize: 16,
+      color: "#717171",
+      marginBottom: 20,
+    },
+    mainGrid: {
+      display: "grid",
+      gridTemplateColumns: "2fr 1fr",
+      gap: 40,
+      marginBottom: 40,
+    },
+    infoCard: {
+      background: "#f9f9f9",
+      padding: 32,
+      borderRadius: 16,
+      border: "1px solid #f0f0f0",
+    },
+    section: {
+      marginBottom: 32,
+      paddingBottom: 32,
+      borderBottom: "1px solid #ebebeb",
+    },
+    sectionTitle: {
+      fontSize: 18,
+      fontWeight: 700,
+      color: "#222",
+      marginBottom: 16,
+    },
+    infoGrid: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 20,
+      marginBottom: 20,
+    },
+    infoItem: {
+      display: "flex",
+      flexDirection: "column",
+    },
+    infoLabel: {
+      fontSize: 12,
+      fontWeight: 700,
+      color: "#717171",
+      textTransform: "uppercase",
+      letterSpacing: "0.5px",
+      marginBottom: 6,
+    },
+    infoValue: {
+      fontSize: 16,
+      fontWeight: 600,
+      color: "#222",
+    },
+    priceCard: {
+      background: "#fff",
+      padding: 32,
+      borderRadius: 16,
+      border: "1px solid #f0f0f0",
+      display: "flex",
+      flexDirection: "column",
+      gap: 16,
+      position: "sticky",
+      top: 20,
+    },
+    price: {
+      fontSize: 36,
+      fontWeight: 800,
+      color: "#222",
+      marginBottom: 8,
+    },
+    priceSubtext: {
+      fontSize: 14,
+      color: "#717171",
+    },
+    cta: {
+      background: "#FF385C",
+      color: "#fff",
+      border: "none",
+      padding: "16px 24px",
+      fontSize: 16,
+      fontWeight: 600,
+      borderRadius: 12,
+      cursor: "pointer",
+      transition: "all 0.2s",
+    },
+    amenitiesList: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 12,
+    },
+    amenityItem: {
+      fontSize: 14,
+      color: "#222",
+      padding: "8px 0",
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+    },
+    loading: {
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      minHeight: "100vh",
+    },
+    notFound: {
+      textAlign: "center",
+      padding: "60px 20px",
+      color: "#717171",
+    },
+  };
+
+  if (loading) {
+    return (
+      <Box style={styles.container}>
+        <div style={styles.loading}>
+          <CircularProgress />
+        </div>
+      </Box>
+    );
+  }
+
+  if (!apartment) {
+    return (
+      <Box style={styles.container}>
+        <div style={styles.header}>
+          <button
+            onClick={() => navigate(-1)}
+            style={styles.backBtn}
+            onMouseEnter={(e) => (e.target.style.background = "#f5f5f5")}
+            onMouseLeave={(e) => (e.target.style.background = "none")}
+          >
+            ← Back
+          </button>
+        </div>
+        <div style={styles.notFound}>
+          <Typography variant="h5" sx={{ mb: 1 }}>Apartment not found</Typography>
+          <Typography variant="body1" sx={{ color: "#717171" }}>
+            This listing may have been removed or is no longer available.
+          </Typography>
+        </div>
+      </Box>
+    );
+  }
+
+  const photos = apartment.photos?.length
+    ? apartment.photos
+    : ["https://images.unsplash.com/photo-1502672260266-1c1ef2d93688"];
+  const currentPhoto = photos[activePhotoIndex] || photos[0];
 
   return (
-    <Container sx={{ py: 6 }}>
-      <Button onClick={() => navigate(-1)} sx={{ mb: 2 }}>Back</Button>
-      <CardMedia
-        component="img"
-        height="300"
-        image={apartment.photos && apartment.photos.length > 0 ? apartment.photos[0] : "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688"}
-        alt={apartment.title || apartment.unitType}
-        sx={{ borderRadius: 2, mb: 2 }}
-      />
-      <Typography variant="h4" sx={{ mb: 2 }}>{apartment.title || apartment.unitType}</Typography>
-      <Typography variant="body1" sx={{ mb: 1 }}><b>Unit Number:</b> {apartment.unitNumber || "-"}</Typography>
-      <Typography variant="body1" sx={{ mb: 1 }}><b>Building Name:</b> {apartment.buildingName || "-"}</Typography>
-      <Typography variant="body1" sx={{ mb: 1 }}><b>Area:</b> {apartment.area ? `${apartment.area} sqm` : "-"}</Typography>
-      <Typography variant="body1" sx={{ mb: 1 }}><b>Floor:</b> {apartment.floor || "-"}</Typography>
-      <Typography variant="body1" sx={{ mb: 1 }}><b>Unit Type:</b> {apartment.unitType || "-"}</Typography>
-      <Typography variant="body1" sx={{ mb: 1 }}><b>Bedrooms:</b> {apartment.bedrooms || (apartment.unitType && apartment.unitType.toLowerCase() === 'studio' ? 1 : "-")}</Typography>
-      <Typography variant="body1" sx={{ mb: 1 }}><b>Bathrooms:</b> {apartment.bathrooms || "-"}</Typography>
-      <Typography variant="body1" sx={{ mb: 1 }}><b>Furnishing:</b> {apartment.furnishing || "-"}</Typography>
-      <Typography variant="body1" sx={{ mb: 1 }}><b>Amenities:</b> {apartment.amenities && apartment.amenities.length ? apartment.amenities.join(', ') : "-"}</Typography>
-      <Typography variant="body1" sx={{ mb: 1 }}><b>Pet Policy:</b> {apartment.petPolicy || "-"}</Typography>
-      <Typography variant="body1" sx={{ mb: 1 }}><b>Deposit Amount:</b> {apartment.deposit ? `₱${apartment.deposit.toLocaleString()}` : "-"}</Typography>
-      <Typography variant="body1" sx={{ mb: 1 }}><b>Advance Payment:</b> {apartment.advance ? `₱${apartment.advance.toLocaleString()}` : "-"}</Typography>
-      <Typography variant="body1" sx={{ mb: 1 }}><b>Minimum Lease Term:</b> {apartment.minLeaseTerm || "-"}</Typography>
-      <Typography variant="body1" sx={{ mb: 1 }}><b>Available From:</b> {apartment.availableFrom ? new Date(apartment.availableFrom).toLocaleDateString() : "-"}</Typography>
-      <Typography variant="body1" sx={{ mb: 1 }}><b>Utilities Included:</b> {apartment.utilitiesIncluded && apartment.utilitiesIncluded.length ? apartment.utilitiesIncluded.join(', ') : "-"}</Typography>
-      <Typography variant="body1" sx={{ mb: 1 }}><b>Description:</b> {apartment.description || "-"}</Typography>
-      <Typography variant="body1" sx={{ mb: 1 }}><b>Special Notes:</b> {apartment.specialNotes || "-"}</Typography>
-      <Typography variant="body1" sx={{ mb: 1 }}><b>Landlord:</b> {apartment.landlord?.name || "-"} ({apartment.landlord?.email || "-"})</Typography>
-      {apartment.photos && apartment.photos.length > 1 && (
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 2 }}>
-          {apartment.photos.slice(1).map((url, idx) => (
-            <img key={idx} src={url} alt={`Photo ${idx+2}`} style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 6 }} />
-          ))}
-        </Box>
-      )}
-    </Container>
+    <Box style={styles.container}>
+      <div style={styles.header}>
+        <button
+          onClick={() => navigate(-1)}
+          style={styles.backBtn}
+          onMouseEnter={(e) => (e.target.style.background = "#f5f5f5")}
+          onMouseLeave={(e) => (e.target.style.background = "none")}
+        >
+          ← Back
+        </button>
+      </div>
+
+      <div style={styles.content}>
+        {/* Image Gallery */}
+        {photos.length > 0 && (
+          <div style={styles.imageGallery}>
+            <div style={styles.mainPhotoWrap}>
+              <img src={currentPhoto} alt={apartment.title || apartment.unitType} style={styles.mainImage} />
+            </div>
+            {photos.length > 1 && (
+              <div style={styles.thumbRail}>
+                {photos.map((photo, idx) => (
+                  <button
+                    key={`${photo}-${idx}`}
+                    type="button"
+                    style={{
+                      ...styles.thumbButton,
+                      ...(idx === activePhotoIndex ? styles.activeThumbButton : {}),
+                    }}
+                    onClick={() => setActivePhotoIndex(idx)}
+                    aria-label={`Show image ${idx + 1}`}
+                  >
+                    <img src={photo} alt="" style={styles.thumbImage} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Title */}
+        <div style={styles.titleSection}>
+          <h1 style={styles.title}>{apartment.title || apartment.unitType}</h1>
+          <p style={styles.subtitle}>
+            {apartment.buildingName && `${apartment.buildingName} • `}
+            {apartment.area && `${apartment.area} sqm`}
+          </p>
+        </div>
+
+        {/* Main Content Grid */}
+        <div style={styles.mainGrid}>
+          {/* Left Column - Details */}
+          <div>
+            {/* Key Info */}
+            <div style={styles.infoCard}>
+              <div style={styles.section}>
+                <div style={styles.sectionTitle}>Property Details</div>
+                <div style={styles.infoGrid}>
+                  <div style={styles.infoItem}>
+                    <span style={styles.infoLabel}>Unit Type</span>
+                    <span style={styles.infoValue}>{apartment.unitType || "-"}</span>
+                  </div>
+                  <div style={styles.infoItem}>
+                    <span style={styles.infoLabel}>Bedrooms</span>
+                    <span style={styles.infoValue}>
+                      {apartment.bedrooms || (apartment.unitType?.toLowerCase() === "studio" ? 1 : "-")}
+                    </span>
+                  </div>
+                  <div style={styles.infoItem}>
+                    <span style={styles.infoLabel}>Bathrooms</span>
+                    <span style={styles.infoValue}>{apartment.bathrooms || "-"}</span>
+                  </div>
+                  <div style={styles.infoItem}>
+                    <span style={styles.infoLabel}>Floor</span>
+                    <span style={styles.infoValue}>{apartment.floor || "-"}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Furnishing & Pet Policy */}
+              <div style={styles.section}>
+                <div style={styles.sectionTitle}>Features</div>
+                <div style={styles.infoGrid}>
+                  <div style={styles.infoItem}>
+                    <span style={styles.infoLabel}>Furnishing</span>
+                    <span style={styles.infoValue}>{apartment.furnishing || "-"}</span>
+                  </div>
+                  <div style={styles.infoItem}>
+                    <span style={styles.infoLabel}>Pet Policy</span>
+                    <span style={styles.infoValue}>{apartment.petPolicy || "-"}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Amenities */}
+              {apartment.amenities && apartment.amenities.length > 0 && (
+                <div style={styles.section}>
+                  <div style={styles.sectionTitle}>Amenities</div>
+                  <div style={styles.amenitiesList}>
+                    {apartment.amenities.map((amenity, idx) => (
+                      <div key={idx} style={styles.amenityItem}>
+                        <span>✓</span> {amenity}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Payment Info */}
+              <div style={styles.section}>
+                <div style={styles.sectionTitle}>Payment Terms</div>
+                <div style={styles.infoGrid}>
+                  <div style={styles.infoItem}>
+                    <span style={styles.infoLabel}>Deposit</span>
+                    <span style={styles.infoValue}>
+                      {apartment.deposit ? `₱${apartment.deposit.toLocaleString()}` : "-"}
+                    </span>
+                  </div>
+                  <div style={styles.infoItem}>
+                    <span style={styles.infoLabel}>Advance</span>
+                    <span style={styles.infoValue}>
+                      {apartment.advance ? `₱${apartment.advance.toLocaleString()}` : "-"}
+                    </span>
+                  </div>
+                  <div style={styles.infoItem}>
+                    <span style={styles.infoLabel}>Min. Lease</span>
+                    <span style={styles.infoValue}>{apartment.minLeaseTerm || "-"}</span>
+                  </div>
+                  <div style={styles.infoItem}>
+                    <span style={styles.infoLabel}>Available From</span>
+                    <span style={styles.infoValue}>
+                      {apartment.availableFrom ? new Date(apartment.availableFrom).toLocaleDateString() : "-"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Description */}
+              {apartment.description && (
+                <div style={{ marginTop: 32 }}>
+                  <div style={styles.sectionTitle}>Description</div>
+                  <Typography variant="body1" sx={{ color: "#717171", lineHeight: 1.6 }}>
+                    {apartment.description}
+                  </Typography>
+                </div>
+              )}
+
+              {/* Special Notes */}
+              {apartment.specialNotes && (
+                <div style={{ marginTop: 32 }}>
+                  <div style={styles.sectionTitle}>Special Notes</div>
+                  <Typography variant="body1" sx={{ color: "#717171", lineHeight: 1.6 }}>
+                    {apartment.specialNotes}
+                  </Typography>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column - Pricing & CTA */}
+          <div style={styles.priceCard}>
+            <div>
+              <div style={styles.price}>₱{apartment.price?.toLocaleString()}</div>
+              <div style={styles.priceSubtext}>per month</div>
+            </div>
+
+            <Button
+              variant="contained"
+              sx={{
+                background: "#FF385C",
+                color: "#fff",
+                padding: "16px 24px",
+                fontSize: 16,
+                fontWeight: 600,
+                borderRadius: 2,
+                textTransform: "none",
+                "&:hover": { background: "#dc3545" },
+              }}
+            >
+              Reserve Now
+            </Button>
+
+            {apartment.landlord && (
+              <div style={{ marginTop: 24, paddingTop: 24, borderTop: "1px solid #ebebeb" }}>
+                <div style={styles.sectionTitle}>Landlord</div>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoValue}>{apartment.landlord.name || "Anonymous"}</span>
+                  <span style={styles.infoLabel}>ID Owner</span>
+                </div>
+                {apartment.landlord.email && (
+                  <div style={{ marginTop: 12 }}>
+                    <span style={styles.infoLabel}>Contact</span>
+                    <span style={styles.infoValue}>{apartment.landlord.email}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </Box>
   );
 }

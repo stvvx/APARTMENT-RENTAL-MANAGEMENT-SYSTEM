@@ -32,7 +32,6 @@ Communication
 Landlord
 
 Authentication
--Register account (pending admin approval)
 -Login / logout with secure credentials
 -Unique landlord ID for data isolation
 -Update profile and account settings
