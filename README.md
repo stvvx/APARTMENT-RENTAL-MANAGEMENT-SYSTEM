@@ -71,10 +71,10 @@ ADMINISTRATOR
 
 Account & User Management
 
--View all registered landlord accounts
--Approve or reject landlord registrations
--Suspend or deactivate user accounts
--View tenant accounts system-wide
+✅View all registered landlord accounts
+-Approve or reject landlord registrations (not yet complete)
+✅Suspend or deactivate user accounts
+✅View tenant accounts system-wide
 
 System Monitoring
 -View all apartment listings across landlords
@@ -88,6 +88,6 @@ Data Integrity
 -Manage system-level configurations
 
 Admin Dashboard
--Summary metrics (total units, tenants, payments)
+✅Summary metrics (total units, tenants, payments)
 -Pending approvals queue
 -Recent activity feed

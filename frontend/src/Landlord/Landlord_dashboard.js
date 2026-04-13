@@ -439,9 +439,21 @@ export default function LandlordDashboard() {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    if (name === "unitType" && value.toLowerCase() === "studio") {
-      setForm((f) => ({ ...f, unitType: value, bedrooms: 1 }));
-      return;
+    if (name === "unitType") {
+      const val = value.trim().toLowerCase();
+      if (val === "studio") {
+        setForm((f) => ({ ...f, unitType: value, bedrooms: 0 }));
+        return;
+      } else if (val === "1br") {
+        setForm((f) => ({ ...f, unitType: value, bedrooms: 1 }));
+        return;
+      } else if (val === "2br") {
+        setForm((f) => ({ ...f, unitType: value, bedrooms: 2 }));
+        return;
+      } else if (val === "3br") {
+        setForm((f) => ({ ...f, unitType: value, bedrooms: 3 }));
+        return;
+      }
     }
     setForm((f) => ({ ...f, [name]: type === "checkbox" ? checked : value }));
   };
@@ -676,14 +688,17 @@ export default function LandlordDashboard() {
                   <FieldLabel>Bedrooms</FieldLabel>
                   <StyledInput
                     name="bedrooms"
-                    value={isStudio ? 1 : form.bedrooms}
+                    value={form.unitType.trim().toLowerCase() === "studio" ? 0 : form.bedrooms}
                     onChange={handleChange}
                     type="number"
                     placeholder="0"
-                    disabled={isStudio}
+                    disabled={["studio", "1br", "2br", "3br"].includes(form.unitType.trim().toLowerCase())}
                   />
-                  {isStudio && (
-                    <Typography sx={{ fontSize: 11, color: T.muted, mt: 0.5 }}>Auto-set to 1 for studios</Typography>
+                  {form.unitType.trim().toLowerCase() === "studio" && (
+                    <Typography sx={{ fontSize: 11, color: T.muted, mt: 0.5 }}>Studios have no separate bedrooms</Typography>
+                  )}
+                  {["1br", "2br", "3br"].includes(form.unitType.trim().toLowerCase()) && (
+                    <Typography sx={{ fontSize: 11, color: T.muted, mt: 0.5 }}>Bedrooms auto-set by unit type</Typography>
                   )}
                 </Box>
                 <Box>
