@@ -1,9 +1,9 @@
 import express from 'express';
-import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { connectDB } from './config/database.js';
 
 // Load environment variables
 dotenv.config();
@@ -39,12 +39,8 @@ app.use('/api/tenant', (await import('./routes/tenant.js')).default);
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI;
 
-mongoose.connect(MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => {
-  console.log('MongoDB connected');
+try {
+  await connectDB(MONGO_URI);
   const server = app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
@@ -59,7 +55,7 @@ mongoose.connect(MONGO_URI, {
     console.error('Server startup error:', err);
     process.exit(1);
   });
-})
-.catch((err) => {
+} catch (err) {
   console.error('MongoDB connection error:', err);
-});
+  process.exit(1);
+}
