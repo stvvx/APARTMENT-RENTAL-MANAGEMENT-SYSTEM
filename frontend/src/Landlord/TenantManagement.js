@@ -1,14 +1,94 @@
-import React, { useEffect, useState } from "react";
-import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Dialog, DialogTitle, DialogContent, DialogActions } from "@mui/material";
+import React, { useEffect, useState, useCallback } from "react";
+import {
+  Box,
+  Typography,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Divider
+} from "@mui/material";
 
 export default function TenantManagement() {
   const [applications, setApplications] = useState([]);
   const [payments, setPayments] = useState({});
+  const [reservationPayments, setReservationPayments] = useState({});
   const [tenantProfile, setTenantProfile] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [applicationOpen, setApplicationOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState(null);
   const token = localStorage.getItem("token");
+
+  const formatMoney = (v) => {
+    const n = Number(v || 0);
+    return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  };
+
+  const normalizeStatus = (s) => String(s || "").toLowerCase();
+
+  const statusPill = (status) => {
+    const s = normalizeStatus(status);
+    if (s === "paid") return <span style={{ color: "#27ae60", fontWeight: "bold" }}>✓ Paid</span>;
+    if (s === "pending") return <span style={{ color: "#2980b9", fontWeight: "bold" }}>⌛ Pending</span>;
+    if (s === "unpaid") return <span style={{ color: "#e74c3c", fontWeight: "bold" }}>⚠ Unpaid</span>;
+    if (s === "partial") return <span style={{ color: "#f39c12", fontWeight: "bold" }}>⚠ Partial</span>;
+    if (s === "late") return <span style={{ color: "#c0392b", fontWeight: "bold" }}>✕ Late</span>;
+    return <span style={{ color: "#616161", fontWeight: "bold" }}>{String(status || "-")}</span>;
+  };
+
+  const paymentSortKey = (p) => {
+    // Prefer "proof of payment" timestamps, fallback to dueDate/createdAt.
+    const t = p?.receiptUploadedAt || p?.createdAt || p?.dueDate;
+    const ms = t ? new Date(t).getTime() : 0;
+    return Number.isFinite(ms) ? ms : 0;
+  };
+
+  const getLatestPayment = (arr) => {
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    return [...arr].sort((a, b) => paymentSortKey(b) - paymentSortKey(a))[0];
+  };
+
+  const refreshPayments = useCallback(() => {
+    fetch("http://localhost:5000/api/payments/landlord", {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          const paymentsByApartment = {};
+          const reservationByApartment = {};
+
+          data.forEach((payment) => {
+            const apartmentId = payment.apartment?._id || payment.apartment;
+            const pType = String(payment.paymentType || "rent").toLowerCase();
+
+            if (pType === "reservation") {
+              // keep the latest reservation payment per apartment
+              const existing = reservationByApartment[apartmentId];
+              if (!existing || paymentSortKey(payment) >= paymentSortKey(existing)) {
+                reservationByApartment[apartmentId] = payment;
+              }
+              return;
+            }
+
+            if (!paymentsByApartment[apartmentId]) paymentsByApartment[apartmentId] = [];
+            paymentsByApartment[apartmentId].push(payment);
+          });
+
+          setPayments(paymentsByApartment);
+          setReservationPayments(reservationByApartment);
+        }
+      })
+      .catch((err) => console.error("Error fetching payments:", err));
+  }, [token]);
 
   // Fetch applications for landlord's apartments
   useEffect(() => {
@@ -21,25 +101,8 @@ export default function TenantManagement() {
 
   // Fetch payments for landlord
   useEffect(() => {
-    fetch("http://localhost:5000/api/payments/landlord", {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          const paymentsByApartment = {};
-          data.forEach(payment => {
-            const apartmentId = payment.apartment?._id || payment.apartment;
-            if (!paymentsByApartment[apartmentId]) {
-              paymentsByApartment[apartmentId] = [];
-            }
-            paymentsByApartment[apartmentId].push(payment);
-          });
-          setPayments(paymentsByApartment);
-        }
-      })
-      .catch(err => console.error('Error fetching payments:', err));
-  }, [token]);
+    refreshPayments();
+  }, [refreshPayments]);
 
   // Approve or reject application
   const handleStatus = async (id, status) => {
@@ -102,6 +165,27 @@ export default function TenantManagement() {
     setApplicationOpen(true);
   };
 
+  const handleReviewRentReceipt = async (paymentId, action) => {
+    try {
+      const res = await fetch(`http://localhost:5000/api/payments/landlord/rent/${paymentId}/review`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action })
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data?.message || "Failed to review rent receipt.");
+        return;
+      }
+
+      refreshPayments();
+    } catch (err) {
+      console.error("Error reviewing rent receipt:", err);
+      alert("Error reviewing rent receipt: " + err.message);
+    }
+  };
+
   return (
     <Box sx={{ mt: 4 }}>
       <Typography variant="h5" sx={{ mb: 2, color: "#2c3e50", fontWeight: "bold" }}>
@@ -114,6 +198,7 @@ export default function TenantManagement() {
               <TableCell>Applicant</TableCell>
               <TableCell>Unit</TableCell>
               <TableCell>Status</TableCell>
+              <TableCell>Reservation Fee</TableCell>
               <TableCell>Monthly Payment</TableCell>
               <TableCell>Actions</TableCell>
             </TableRow>
@@ -122,8 +207,9 @@ export default function TenantManagement() {
             {applications.map((app, idx) => {
               const apartmentId = app.apartment?._id;
               const apartmentPayments = payments[apartmentId] || [];
-              const latestPayment = apartmentPayments.length > 0 ? apartmentPayments[apartmentPayments.length - 1] : null;
-              
+              const latestPayment = getLatestPayment(apartmentPayments);
+              const reservationP = reservationPayments[apartmentId] || null;
+
               return (
                 <TableRow key={idx}>
                   <TableCell>{app.tenant?.name || "-"}</TableCell>
@@ -135,29 +221,96 @@ export default function TenantManagement() {
                     {app.status === "ended" && <Typography sx={{ color: "#616161", fontWeight: "bold" }}>Contract Ended</Typography>}
                     {app.status === "cancelled" && <Typography sx={{ color: "#9e9e9e", fontWeight: "bold" }}>Cancelled</Typography>}
                   </TableCell>
+
+                  {/* Reservation Fee column */}
+                  <TableCell>
+                    {app.status === "approved" ? (
+                      reservationP ? (
+                        <Box>
+                          <Typography variant="body2">
+                            {statusPill(reservationP.status)}
+                            <span style={{ color: "#9e9e9e" }}> — ₱{formatMoney(reservationP.amount)}</span>
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: "gray" }}>
+                            Method: {reservationP.method || "-"}
+                            {reservationP.receiptUploadedAt ? ` • Uploaded ${new Date(reservationP.receiptUploadedAt).toLocaleString()}` : ""}
+                          </Typography>
+                          {reservationP.receiptUrl ? (
+                            <Typography variant="caption" sx={{ display: "block" }}>
+                              <a href={`http://localhost:5000${reservationP.receiptUrl}`} target="_blank" rel="noopener noreferrer">
+                                View receipt
+                              </a>
+                            </Typography>
+                          ) : null}
+                        </Box>
+                      ) : (
+                        <Typography variant="body2" sx={{ color: "gray" }}>
+                          - No reservation payment yet
+                        </Typography>
+                      )
+                    ) : (
+                      <Typography variant="body2" sx={{ color: "gray" }}>
+                        -
+                      </Typography>
+                    )}
+                  </TableCell>
+
+                  {/* Monthly Payment (Apartment Payment) column */}
                   <TableCell>
                     {app.status === "approved" ? (
                       latestPayment ? (
                         <Box>
-                          <Typography variant="body2">
-                            {latestPayment.status === "paid" && <span style={{ color: "#27ae60", fontWeight: "bold" }}>✓ Paid</span>}
-                            {latestPayment.status === "unpaid" && <span style={{ color: "#e74c3c", fontWeight: "bold" }}>⚠ Unpaid</span>}
-                            {latestPayment.status === "partial" && <span style={{ color: "#f39c12", fontWeight: "bold" }}>⚠ Partial</span>}
-                            {latestPayment.status === "late" && <span style={{ color: "#c0392b", fontWeight: "bold" }}>✕ Late</span>}
+                          <Typography variant="body2">{statusPill(latestPayment.status)}</Typography>
+                          <Typography variant="caption" sx={{ color: "gray", display: "block" }}>
+                            ₱{formatMoney(latestPayment.amount)} due {latestPayment.dueDate ? new Date(latestPayment.dueDate).toLocaleDateString() : "-"}
                           </Typography>
-                          <Typography variant="caption" sx={{ color: "gray" }}>
-                            ₱{latestPayment.amount?.toLocaleString() || 0} due {new Date(latestPayment.dueDate).toLocaleDateString()}
+                          <Typography variant="caption" sx={{ color: "gray", display: "block" }}>
+                            Method: {latestPayment.method || "-"}
+                            {latestPayment.receiptUploadedAt ? ` • Uploaded ${new Date(latestPayment.receiptUploadedAt).toLocaleString()}` : ""}
                           </Typography>
+                          {latestPayment.receiptUrl ? (
+                            <Typography variant="caption" sx={{ display: "block" }}>
+                              <a href={`http://localhost:5000${latestPayment.receiptUrl}`} target="_blank" rel="noopener noreferrer">
+                                View receipt
+                              </a>
+                            </Typography>
+                          ) : null}
+
+                          {normalizeStatus(latestPayment.status) === "pending" && (
+                            <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
+                              <Button
+                                size="small"
+                                color="success"
+                                variant="contained"
+                                onClick={() => handleReviewRentReceipt(latestPayment._id, "approve")}
+                              >
+                                Approve
+                              </Button>
+                              <Button
+                                size="small"
+                                color="error"
+                                variant="outlined"
+                                onClick={() => handleReviewRentReceipt(latestPayment._id, "reject")}
+                              >
+                                Reject
+                              </Button>
+                            </Box>
+                          )}
                         </Box>
                       ) : (
-                        <Typography variant="body2" sx={{ color: "gray" }}>- No payment yet</Typography>
+                        <Typography variant="body2" sx={{ color: "gray" }}>
+                          - No rent payment yet
+                        </Typography>
                       )
                     ) : (
-                      <Typography variant="body2" sx={{ color: "gray" }}>-</Typography>
+                      <Typography variant="body2" sx={{ color: "gray" }}>
+                        -
+                      </Typography>
                     )}
                   </TableCell>
+
                   <TableCell>
-                    <Button size="small" variant="outlined" onClick={() => handleViewApplication(app)} sx={{ mr: 1 }}>View </Button>
+                    <Button size="small" variant="outlined" onClick={() => handleViewApplication(app)} sx={{ mr: 1 }}>View</Button>
                     {app.status === "pending" && (
                       <>
                         <Button size="small" color="success" onClick={() => handleStatus(app._id, "approved")}>Approve</Button>
@@ -199,47 +352,178 @@ export default function TenantManagement() {
         </DialogActions>
       </Dialog>
       {/* Application Details Dialog */}
-      <Dialog open={applicationOpen} onClose={() => setApplicationOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Application Details</DialogTitle>
-        <DialogContent>
+      <Dialog open={applicationOpen} onClose={() => setApplicationOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography variant="h6" sx={{ fontWeight: 800, color: "#2c3e50" }}>
+            Application Details
+          </Typography>
+          <Typography variant="body2" sx={{ color: "text.secondary", mt: 0.25 }}>
+            Review the tenant application, message, and provided documents.
+          </Typography>
+        </DialogTitle>
+
+        <DialogContent sx={{ pt: 1 }}>
           {selectedApplication ? (
-            <>
-              <Typography><b>Applicant:</b> {selectedApplication.tenant?.name || "-"}</Typography>
-              <Typography><b>Email:</b> {selectedApplication.tenant?.email || "-"}</Typography>
-              <Typography><b>Apartment:</b> {selectedApplication.apartment?.title || selectedApplication.apartment?.unitType || "-"}</Typography>
-              <Typography><b>Status:</b> {selectedApplication.status}</Typography>
-              {selectedApplication.message && (
-                <Typography sx={{ mt: 1 }}><b>Message:</b> {selectedApplication.message}</Typography>
-              )}
-              {/* Document Previews */}
-              {selectedApplication.documents && selectedApplication.documents.length > 0 && (
-                <Box sx={{ mt: 2 }}>
-                  <Typography sx={{ mb: 1 }}><b>Documents:</b></Typography>
-                  <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                    {selectedApplication.documents.map((doc, idx) => (
-                      doc.match(/\.(jpg|jpeg|png|gif)$/i) ? (
-                        <img
-                          key={idx}
-                          src={doc}
-                          alt={`Document ${idx+1}`}
-                          style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: 6, border: '1px solid #ccc' }}
-                        />
-                      ) : (
-                        <a key={idx} href={doc} target="_blank" rel="noopener noreferrer">
-                          View Document {idx+1}
-                        </a>
-                      )
-                    ))}
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 1 }}>
+                  Applicant & Unit
+                </Typography>
+
+                <Box
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+                    gap: 1.25
+                  }}
+                >
+                  <Box>
+                    <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                      Applicant
+                    </Typography>
+                    <Typography sx={{ fontWeight: 700 }}>
+                      {selectedApplication.tenant?.name || "-"}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                      {selectedApplication.tenant?.email || "-"}
+                    </Typography>
+                  </Box>
+
+                  <Box>
+                    <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                      Unit
+                    </Typography>
+                    <Typography sx={{ fontWeight: 700 }}>
+                      {selectedApplication.apartment?.title || selectedApplication.apartment?.unitType || "-"}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                      Status: <span style={{ fontWeight: 700 }}>{selectedApplication.status}</span>
+                    </Typography>
                   </Box>
                 </Box>
-              )}
-            </>
+
+                {selectedApplication.message ? (
+                  <>
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 0.75 }}>
+                      Message
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        backgroundColor: "#f6f8fb",
+                        border: "1px solid #e6eaf0",
+                        p: 1.5,
+                        borderRadius: 2,
+                        whiteSpace: "pre-wrap"
+                      }}
+                    >
+                      {selectedApplication.message}
+                    </Typography>
+                  </>
+                ) : null}
+              </Paper>
+
+              <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 1 }}>
+                  Documents
+                </Typography>
+
+                {selectedApplication.documents && selectedApplication.documents.length > 0 ? (
+                  <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+                    {selectedApplication.documents.map((doc, idx) => {
+                      const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(doc || "");
+
+                      if (isImage) {
+                        return (
+                          <a
+                            key={idx}
+                            href={doc}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ textDecoration: "none" }}
+                          >
+                            <Box
+                              sx={{
+                                width: 140,
+                                borderRadius: 2,
+                                overflow: "hidden",
+                                border: "1px solid #e0e0e0",
+                                background: "#fff",
+                                boxShadow: "0 2px 10px rgba(0,0,0,0.06)",
+                                transition: "transform 120ms ease"
+                              }}
+                            >
+                              <img
+                                src={doc}
+                                alt={`Document ${idx + 1}`}
+                                style={{ width: "100%", height: 110, objectFit: "cover", display: "block" }}
+                              />
+                              <Box sx={{ p: 1 }}>
+                                <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                                  Document {idx + 1}
+                                </Typography>
+                                <Typography variant="body2" sx={{ fontWeight: 700, color: "#2c3e50" }}>
+                                  View image
+                                </Typography>
+                              </Box>
+                            </Box>
+                          </a>
+                        );
+                      }
+
+                      return (
+                        <Paper
+                          key={idx}
+                          variant="outlined"
+                          sx={{
+                            p: 1.5,
+                            borderRadius: 2,
+                            minWidth: 240,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 2
+                          }}
+                        >
+                          <Box>
+                            <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                              Document {idx + 1}
+                            </Typography>
+                            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                              File link
+                            </Typography>
+                          </Box>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            component="a"
+                            href={doc}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            Open
+                          </Button>
+                        </Paper>
+                      );
+                    })}
+                  </Box>
+                ) : (
+                  <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                    No documents uploaded.
+                  </Typography>
+                )}
+              </Paper>
+            </Box>
           ) : (
             <Typography>Loading...</Typography>
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setApplicationOpen(false)}>Close</Button>
+
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setApplicationOpen(false)} variant="contained">
+            Close
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

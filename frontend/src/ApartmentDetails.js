@@ -17,6 +17,19 @@ export default function ApartmentDetails() {
   const [apartment, setApartment] = useState(routedApartment);
   const [loading, setLoading] = useState(!routedApartment);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+  const [reserving, setReserving] = useState(false);
+  const [reserveError, setReserveError] = useState("");
+  const [contact, setContact] = useState(null);
+  const [contactError, setContactError] = useState("");
+
+  // Reservation status for this apartment (server-truth)
+  const [reservationPaid, setReservationPaid] = useState(false);
+  const [reservationStatusLoading, setReservationStatusLoading] = useState(false);
+
+  // Landlord approval gate: tenant must have an APPROVED application before they can reserve
+  const [applicationApproved, setApplicationApproved] = useState(false);
+  const [applicationStatusLoading, setApplicationStatusLoading] = useState(false);
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -244,6 +257,77 @@ export default function ApartmentDetails() {
     },
   };
 
+  const formatLocation = (loc) => {
+    if (!loc) return "—";
+    const parts = [loc.street, loc.barangay, loc.city].map((p) => String(p || "").trim()).filter(Boolean);
+    return parts.length ? parts.join(", ") : "—";
+  };
+
+  const token = localStorage.getItem("token");
+  const isLoggedIn = Boolean(token);
+
+  const fetchReservationPaidStatus = async () => {
+    if (!token) {
+      setReservationPaid(false);
+      return;
+    }
+    setReservationStatusLoading(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/payments/tenant", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) return;
+      const list = Array.isArray(data) ? data : [];
+      const hasPaid = list.some(
+        (p) =>
+          String(p?.paymentType || "").toLowerCase() === "reservation" &&
+          String(p?.status || "").toLowerCase() === "paid" &&
+          String(p?.apartment?._id || p?.apartment) === String(id)
+      );
+      setReservationPaid(hasPaid);
+    } catch {
+      // ignore
+    } finally {
+      setReservationStatusLoading(false);
+    }
+  };
+
+  const fetchApplicationApprovalStatus = async () => {
+    if (!token) {
+      setApplicationApproved(false);
+      return;
+    }
+
+    setApplicationStatusLoading(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/applications/mine", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) return;
+
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.applications)
+          ? data.applications
+          : [];
+
+      const app = list.find((a) => String(a?.apartment?._id || a?.apartment) === String(id));
+      setApplicationApproved(String(app?.status || "").toLowerCase() === "approved");
+    } catch {
+      // ignore
+    } finally {
+      setApplicationStatusLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReservationPaidStatus();
+    fetchApplicationApprovalStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, token]);
+
   if (loading) {
     return (
       <Box style={styles.container}>
@@ -282,8 +366,75 @@ export default function ApartmentDetails() {
     : ["https://images.unsplash.com/photo-1502672260266-1c1ef2d93688"];
   const currentPhoto = photos[activePhotoIndex] || photos[0];
 
+  const handleReserveNow = async () => {
+    setReserveError("");
+
+    if (!isLoggedIn) {
+      navigate("/login", { state: { from: `/apartment/${id}` } });
+      return;
+    }
+
+    setReserving(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/payments/tenant/reservation", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ apartmentId: id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setReserveError(data?.message || "Failed to start reservation fee payment.");
+        return;
+      }
+
+      // Go to dedicated Reservation Fee page
+      navigate(`/reservation-fee/${data?.payment?._id}`, {
+        state: {
+          reservation: {
+            apartmentId: id,
+            paymentId: data?.payment?._id,
+            amount: data?.payment?.amount,
+            apartmentTitle: apartment?.title || apartment?.unitType,
+            apartmentLocation: apartment?.location,
+          },
+        },
+      });
+    } catch {
+      setReserveError("Failed to start reservation fee payment.");
+    } finally {
+      setReserving(false);
+    }
+  };
+
+  const handleRevealContact = async () => {
+    setContactError("");
+    setContact(null);
+
+    if (!isLoggedIn) {
+      navigate("/login", { state: { from: `/apartment/${id}` } });
+      return;
+    }
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/payments/tenant/apartment/${id}/contact`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setContactError(data?.message || "Unable to fetch contact info.");
+        return;
+      }
+      setContact(data?.landlord || null);
+    } catch {
+      setContactError("Unable to fetch contact info.");
+    }
+  };
+
   return (
-    <Box style={styles.container}>
+    <Box sx={styles.container}>
       <div style={styles.header}>
         <button
           onClick={() => navigate(-1)}
@@ -337,109 +488,111 @@ export default function ApartmentDetails() {
           {/* Left Column - Details */}
           <div>
             {/* Key Info */}
-            <div style={styles.infoCard}>
-              <div style={styles.section}>
-                <div style={styles.sectionTitle}>Property Details</div>
-                <div style={styles.infoGrid}>
-                  <div style={styles.infoItem}>
-                    <span style={styles.infoLabel}>Unit Type</span>
-                    <span style={styles.infoValue}>{apartment.unitType || "-"}</span>
-                  </div>
-                  <div style={styles.infoItem}>
-                    <span style={styles.infoLabel}>Bedrooms</span>
-                    <span style={styles.infoValue}>
-                      {apartment.bedrooms || (apartment.unitType?.toLowerCase() === "studio" ? 1 : "-")}
-                    </span>
-                  </div>
-                  <div style={styles.infoItem}>
-                    <span style={styles.infoLabel}>Bathrooms</span>
-                    <span style={styles.infoValue}>{apartment.bathrooms || "-"}</span>
-                  </div>
-                  <div style={styles.infoItem}>
-                    <span style={styles.infoLabel}>Floor</span>
-                    <span style={styles.infoValue}>{apartment.floor || "-"}</span>
-                  </div>
+            <div style={styles.section}>
+              <div style={styles.sectionTitle}>Apartment Details</div>
+              <div style={styles.infoGrid}>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>Unit Type</span>
+                  <span style={styles.infoValue}>{apartment.unitType || "-"}</span>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>Bedrooms</span>
+                  <span style={styles.infoValue}>
+                    {apartment.bedrooms || (apartment.unitType?.toLowerCase() === "studio" ? 1 : "-")}
+                  </span>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>Bathrooms</span>
+                  <span style={styles.infoValue}>{apartment.bathrooms || "-"}</span>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>Floor</span>
+                  <span style={styles.infoValue}>{apartment.floor || "-"}</span>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>Location</span>
+                  <span style={styles.infoValue}>{formatLocation(apartment.location)}</span>
                 </div>
               </div>
-
-              {/* Furnishing & Pet Policy */}
-              <div style={styles.section}>
-                <div style={styles.sectionTitle}>Features</div>
-                <div style={styles.infoGrid}>
-                  <div style={styles.infoItem}>
-                    <span style={styles.infoLabel}>Furnishing</span>
-                    <span style={styles.infoValue}>{apartment.furnishing || "-"}</span>
-                  </div>
-                  <div style={styles.infoItem}>
-                    <span style={styles.infoLabel}>Pet Policy</span>
-                    <span style={styles.infoValue}>{apartment.petPolicy || "-"}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Amenities */}
-              {apartment.amenities && apartment.amenities.length > 0 && (
-                <div style={styles.section}>
-                  <div style={styles.sectionTitle}>Amenities</div>
-                  <div style={styles.amenitiesList}>
-                    {apartment.amenities.map((amenity, idx) => (
-                      <div key={idx} style={styles.amenityItem}>
-                        <span>✓</span> {amenity}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Payment Info */}
-              <div style={styles.section}>
-                <div style={styles.sectionTitle}>Payment Terms</div>
-                <div style={styles.infoGrid}>
-                  <div style={styles.infoItem}>
-                    <span style={styles.infoLabel}>Deposit</span>
-                    <span style={styles.infoValue}>
-                      {apartment.deposit ? `₱${apartment.deposit.toLocaleString()}` : "-"}
-                    </span>
-                  </div>
-                  <div style={styles.infoItem}>
-                    <span style={styles.infoLabel}>Advance</span>
-                    <span style={styles.infoValue}>
-                      {apartment.advance ? `₱${apartment.advance.toLocaleString()}` : "-"}
-                    </span>
-                  </div>
-                  <div style={styles.infoItem}>
-                    <span style={styles.infoLabel}>Min. Lease</span>
-                    <span style={styles.infoValue}>{apartment.minLeaseTerm || "-"}</span>
-                  </div>
-                  <div style={styles.infoItem}>
-                    <span style={styles.infoLabel}>Available From</span>
-                    <span style={styles.infoValue}>
-                      {apartment.availableFrom ? new Date(apartment.availableFrom).toLocaleDateString() : "-"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Description */}
-              {apartment.description && (
-                <div style={{ marginTop: 32 }}>
-                  <div style={styles.sectionTitle}>Description</div>
-                  <Typography variant="body1" sx={{ color: "#717171", lineHeight: 1.6 }}>
-                    {apartment.description}
-                  </Typography>
-                </div>
-              )}
-
-              {/* Special Notes */}
-              {apartment.specialNotes && (
-                <div style={{ marginTop: 32 }}>
-                  <div style={styles.sectionTitle}>Special Notes</div>
-                  <Typography variant="body1" sx={{ color: "#717171", lineHeight: 1.6 }}>
-                    {apartment.specialNotes}
-                  </Typography>
-                </div>
-              )}
             </div>
+
+            {/* Furnishing & Pet Policy */}
+            <div style={styles.section}>
+              <div style={styles.sectionTitle}>Features</div>
+              <div style={styles.infoGrid}>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>Furnishing</span>
+                  <span style={styles.infoValue}>{apartment.furnishing || "-"}</span>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>Pet Policy</span>
+                  <span style={styles.infoValue}>{apartment.petPolicy || "-"}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Amenities */}
+            {apartment.amenities && apartment.amenities.length > 0 && (
+              <div style={styles.section}>
+                <div style={styles.sectionTitle}>Amenities</div>
+                <div style={styles.amenitiesList}>
+                  {apartment.amenities.map((amenity, idx) => (
+                    <div key={idx} style={styles.amenityItem}>
+                      <span>✓</span> {amenity}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Payment Info */}
+            <div style={styles.section}>
+              <div style={styles.sectionTitle}>Payment Terms</div>
+              <div style={styles.infoGrid}>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>Deposit</span>
+                  <span style={styles.infoValue}>
+                    {apartment.deposit ? `₱${apartment.deposit.toLocaleString()}` : "-"}
+                  </span>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>Advance</span>
+                  <span style={styles.infoValue}>
+                    {apartment.advance ? `₱${apartment.advance.toLocaleString()}` : "-"}
+                  </span>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>Min. Lease</span>
+                  <span style={styles.infoValue}>{apartment.minLeaseTerm || "-"}</span>
+                </div>
+                <div style={styles.infoItem}>
+                  <span style={styles.infoLabel}>Available From</span>
+                  <span style={styles.infoValue}>
+                    {apartment.availableFrom ? new Date(apartment.availableFrom).toLocaleDateString() : "-"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Description */}
+            {apartment.description && (
+              <div style={{ marginTop: 32 }}>
+                <div style={styles.sectionTitle}>Description</div>
+                <Typography variant="body1" sx={{ color: "#717171", lineHeight: 1.6 }}>
+                  {apartment.description}
+                </Typography>
+              </div>
+            )}
+
+            {/* Special Notes */}
+            {apartment.specialNotes && (
+              <div style={{ marginTop: 32 }}>
+                <div style={styles.sectionTitle}>Special Notes</div>
+                <Typography variant="body1" sx={{ color: "#717171", lineHeight: 1.6 }}>
+                  {apartment.specialNotes}
+                </Typography>
+              </div>
+            )}
           </div>
 
           {/* Right Column - Pricing & CTA */}
@@ -460,22 +613,74 @@ export default function ApartmentDetails() {
                 borderRadius: 2,
                 textTransform: "none",
                 "&:hover": { background: "#dc3545" },
+                "&.Mui-disabled": { background: "#f1f1f1", color: "#9aa0a6" },
               }}
+              onClick={handleReserveNow}
+              disabled={reserving || reservationPaid || reservationStatusLoading || applicationStatusLoading || !applicationApproved}
             >
-              Reserve Now
+              {reservationStatusLoading
+                ? "Checking reservation…"
+                : applicationStatusLoading
+                  ? "Checking approval…"
+                  : reservationPaid
+                    ? "Already Reserved"
+                    : reserving
+                      ? "Reserving..."
+                      : applicationApproved
+                        ? "Reserve Now"
+                        : "Waiting for landlord approval"}
             </Button>
+            {reserveError && (
+              <Typography variant="body2" sx={{ color: "#d32f2f", marginTop: 1 }}>
+                {reserveError}
+              </Typography>
+            )}
 
             {apartment.landlord && (
               <div style={{ marginTop: 24, paddingTop: 24, borderTop: "1px solid #ebebeb" }}>
                 <div style={styles.sectionTitle}>Landlord</div>
                 <div style={styles.infoItem}>
                   <span style={styles.infoValue}>{apartment.landlord.name || "Anonymous"}</span>
-                  <span style={styles.infoLabel}>ID Owner</span>
+                  {!contact ? (
+                    <span style={styles.infoLabel}>Contact details are hidden</span>
+                  ) : (
+                    <span style={styles.infoLabel}>Contact unlocked</span>
+                  )}
                 </div>
-                {apartment.landlord.email && (
+
+                {!contact ? (
                   <div style={{ marginTop: 12 }}>
-                    <span style={styles.infoLabel}>Contact</span>
-                    <span style={styles.infoValue}>{apartment.landlord.email}</span>
+                    <span style={styles.infoLabel}>How to get contact info</span>
+                    <span style={styles.infoValue}>
+                      Pay the reservation fee to unlock the landlord’s phone number and email.
+                    </span>
+                    <Box sx={{ mt: 1.5, display: "flex", flexDirection: "column", gap: 1 }}>
+                      <Button
+                        variant="outlined"
+                        onClick={handleRevealContact}
+                        sx={{
+                          borderColor: "#ddd",
+                          color: "#222",
+                          textTransform: "none",
+                          fontWeight: 600,
+                          borderRadius: 2,
+                        }}
+                      >
+                        Reveal contact (after payment)
+                      </Button>
+                      {contactError && (
+                        <Typography variant="body2" sx={{ color: "#d32f2f" }}>
+                          {contactError}
+                        </Typography>
+                      )}
+                    </Box>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <span style={styles.infoLabel}>Email</span>
+                      <span style={styles.infoValue}>{contact.email}</span>
+                    </div>
                   </div>
                 )}
               </div>

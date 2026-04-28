@@ -114,20 +114,16 @@ export const applyAsLandlord = async (req, res) => {
       return res.status(400).json({ message: 'Name and email are required.' });
     }
 
-    if (!req.file) {
-      return res.status(400).json({ message: 'Government issued ID document is required.' });
-    }
-
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
-    // Store landlord application data
+    // Store landlord application data (no ID upload required)
     user.landlordApplication = {
       name,
       email,
-      idDocumentURL: `/uploads/${req.file.filename}`,
-      idDocumentMimeType: req.file.mimetype,
-      idDocumentOriginalName: req.file.originalname,
+      idDocumentURL: undefined,
+      idDocumentMimeType: undefined,
+      idDocumentOriginalName: undefined,
       appliedAt: new Date(),
       status: 'pending'
     };

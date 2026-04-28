@@ -85,6 +85,18 @@ export default function ApartmentListings() {
 
   const token = localStorage.getItem("token");
 
+  const formatLocation = useCallback((loc) => {
+    if (!loc) return "";
+    if (typeof loc === 'string') return loc;
+    if (typeof loc === 'object') {
+      const parts = [loc.street, loc.barangay, loc.city]
+        .map((p) => String(p || '').trim())
+        .filter(Boolean);
+      return parts.length ? parts.join(', ') : '';
+    }
+    return String(loc);
+  }, []);
+
   const fetchApartments = useCallback(async () => {
     try {
       setLoading(true);
@@ -117,12 +129,13 @@ export default function ApartmentListings() {
 
     // Filter by search term
     if (searchTerm) {
-      result = result.filter(
-        (apt) =>
-          apt.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          apt.location?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          apt.district?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+      const term = searchTerm.toLowerCase();
+      result = result.filter((apt) => {
+        const name = String(apt.name || "").toLowerCase();
+        const loc = formatLocation(apt.location).toLowerCase();
+        const district = String(apt.district || "").toLowerCase();
+        return name.includes(term) || loc.includes(term) || district.includes(term);
+      });
     }
 
     // Sort
@@ -145,7 +158,7 @@ export default function ApartmentListings() {
 
     setFilteredApartments(result);
     setCurrentPage(1);
-  }, [apartments, searchTerm, sortBy]);
+  }, [apartments, searchTerm, sortBy, formatLocation]);
 
   useEffect(() => {
     fetchApartments();
@@ -288,7 +301,7 @@ export default function ApartmentListings() {
               whiteSpace: "nowrap",
             }}
           >
-            {apt.location || apt.district}
+            {formatLocation(apt.location) || apt.district}
           </div>
 
           {/* Specs */}

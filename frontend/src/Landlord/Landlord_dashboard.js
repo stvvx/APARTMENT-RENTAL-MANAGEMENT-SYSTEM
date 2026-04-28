@@ -44,7 +44,9 @@ const T = {
 
 const EMPTY_FORM = {
   title: "", price: "", floor: "", unitType: "", photos: [],
-  isAvailable: true, unitNumber: "", buildingName: "", area: "",
+  isAvailable: true, unitNumber: "", buildingName: "",
+  locationStreet: "", locationBarangay: "", locationCity: "",
+  area: "",
   bedrooms: "", bathrooms: "", furnishing: "", amenities: "",
   petPolicy: "", deposit: "", advance: "", minLeaseTerm: "",
   availableFrom: "", utilitiesIncluded: "", specialNotes: "",
@@ -413,6 +415,9 @@ export default function LandlordDashboard() {
       isAvailable: typeof apt.isAvailable === "boolean" ? apt.isAvailable : true,
       unitNumber: apt.unitNumber || "",
       buildingName: apt.buildingName || "",
+      locationStreet: apt.location?.street || "",
+      locationBarangay: apt.location?.barangay || "",
+      locationCity: apt.location?.city || "",
       area: apt.area || "",
       bedrooms: isStudio ? 1 : (apt.bedrooms || ""),
       bathrooms: apt.bathrooms || "",
@@ -484,6 +489,11 @@ export default function LandlordDashboard() {
       ...form,
       amenities: form.amenities ? form.amenities.split(",").map((a) => a.trim()).filter(Boolean) : [],
       utilitiesIncluded: form.utilitiesIncluded ? form.utilitiesIncluded.split(",").map((u) => u.trim()).filter(Boolean) : [],
+      location: {
+        street: form.locationStreet,
+        barangay: form.locationBarangay,
+        city: form.locationCity,
+      },
     };
     await fetch(url, {
       method,
@@ -683,6 +693,26 @@ export default function LandlordDashboard() {
 
             {/* ── Details ── */}
             <FormSection title="Unit Details">
+              <FormRow>
+                <Box>
+                  <FieldLabel>Street</FieldLabel>
+                  <StyledInput name="locationStreet" value={form.locationStreet} onChange={handleChange} placeholder="e.g. 123 Main St" />
+                </Box>
+                <Box>
+                  <FieldLabel>Barangay</FieldLabel>
+                  <StyledInput name="locationBarangay" value={form.locationBarangay} onChange={handleChange} placeholder="e.g. Brgy. San Isidro" />
+                </Box>
+              </FormRow>
+              <FormRow>
+                <Box>
+                  <FieldLabel>City</FieldLabel>
+                  <StyledInput name="locationCity" value={form.locationCity} onChange={handleChange} placeholder="e.g. Cebu City" />
+                </Box>
+                <Box>
+                  <FieldLabel>Area (sqm)</FieldLabel>
+                  <StyledInput name="area" value={form.area} onChange={handleChange} type="number" placeholder="0" />
+                </Box>
+              </FormRow>
               <FormRow>
                 <Box>
                   <FieldLabel>Bedrooms</FieldLabel>

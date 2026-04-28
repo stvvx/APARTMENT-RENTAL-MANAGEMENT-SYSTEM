@@ -85,6 +85,7 @@ export default function AdminHeader() {
             { label: "Dashboard", path: "/admin/dashboard" },
             { label: "Apartments", path: "/admin/apartments" },
             { label: "Users", path: "/admin/users" },
+            { label: "Reservations", path: "/admin/reservations" },
           ].map((item) => (
             <button
               key={item.label}

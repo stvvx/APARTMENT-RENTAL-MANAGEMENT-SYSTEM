@@ -488,10 +488,13 @@ export default function App() {
     if (!token) { navigate("/login"); return; }
     setSubmitting(true);
     try {
-      let idUrl = idFile ? await uploadToCloudinary(idFile) : "";
       let incomeUrl = incomeFile ? await uploadToCloudinary(incomeFile) : "";
-      const documents = [idUrl, incomeUrl].filter(Boolean);
-      if (!documents.length) { alert("Please upload required documents."); setSubmitting(false); return; }
+      const documents = [incomeUrl].filter(Boolean);
+      if (!documents.length) {
+        alert("Please upload required documents.");
+        setSubmitting(false);
+        return;
+      }
       const res = await fetch("http://localhost:5000/api/applications", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -501,7 +504,9 @@ export default function App() {
       const result = await res.json();
       if (result.status === "approved") { setShowApprovalAlert(true); navigate("/payments"); }
       else { alert("Application submitted! Track your status in the Applications tab."); closeModal(); }
-    } catch (err) { alert(err.message); }
+    } catch (e) {
+      alert(e.message);
+    }
     setSubmitting(false);
   };
 
@@ -1143,26 +1148,6 @@ export default function App() {
                   <div>
                     <label style={{ fontSize: 11, fontWeight: 700, color: "#1a1a1a", textTransform: "uppercase", letterSpacing: "0.6px", display: "block", marginBottom: 7, fontFamily: "var(--font-display)" }}>Message to Landlord</label>
                     <textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Tell the landlord a bit about yourself…" rows={3} style={{ width: "100%", padding: "13px 16px", border: "1px solid var(--border)", borderRadius: 12, fontSize: 14.5, fontFamily: "var(--font-body)", outline: "none", resize: "vertical", boxSizing: "border-box", transition: "border-color 0.2s" }} onFocus={(e) => e.target.style.borderColor = "#FF385C"} onBlur={(e) => e.target.style.borderColor = "var(--border)"} />
-                  </div>
-
-                  {/* Gov ID */}
-                  <div>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: "#1a1a1a", textTransform: "uppercase", letterSpacing: "0.6px", display: "block", marginBottom: 7, fontFamily: "var(--font-display)" }}>
-                      Government ID <span style={{ color: "#FF385C" }}>*</span>
-                    </label>
-                    <label style={{
-                      display: "block",
-                      border: `2px dashed ${idFile ? "#FF385C" : "#ddd"}`,
-                      borderRadius: 12, padding: "14px 16px",
-                      textAlign: "center", cursor: "pointer",
-                      background: idFile ? "#fff0f2" : "#fafafa",
-                      fontSize: 13.5, color: idFile ? "#FF385C" : "#6b6b6b",
-                      fontWeight: idFile ? 600 : 400,
-                      transition: "all 0.2s",
-                    }}>
-                      {idFile ? `✓ ${idFile.name}` : "📎 Click to upload ID (image or PDF)"}
-                      <input type="file" accept="image/*,.pdf" onChange={(e) => setIdFile(e.target.files[0])} style={{ display: "none" }} />
-                    </label>
                   </div>
 
                   {/* Proof of Income */}

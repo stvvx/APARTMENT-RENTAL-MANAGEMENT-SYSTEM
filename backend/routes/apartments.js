@@ -13,7 +13,8 @@ const router = express.Router();
 // Public: Get all available apartments
 router.get('/public', async (req, res) => {
   try {
-    const apartments = await Apartment.find({ isAvailable: true }).populate('landlord', 'name email');
+    // Only expose landlord name publicly (contact details hidden until reservation fee is paid)
+    const apartments = await Apartment.find({ isAvailable: true }).populate('landlord', 'name');
     res.json(apartments);
   } catch (err) {
     res.status(500).json({ message: 'Server error.' });
@@ -23,7 +24,8 @@ router.get('/public', async (req, res) => {
 // Tenant: Get all available apartments (for tenant view)
 router.get('/tenant', async (req, res) => {
   try {
-    const apartments = await Apartment.find({ isAvailable: true }).populate('landlord', 'name email');
+    // Only expose landlord name publicly (contact details hidden until reservation fee is paid)
+    const apartments = await Apartment.find({ isAvailable: true }).populate('landlord', 'name');
     res.json(apartments);
   } catch (err) {
     res.status(500).json({ message: 'Server error.' });
@@ -47,7 +49,8 @@ router.get('/tenant/:id', authenticateToken, authorizeRoles('tenant'), async (re
     if (!application) {
       return res.status(403).json({ message: 'You do not have access to this apartment.' });
     }
-    const apartment = await Apartment.findById(apartmentId).populate('landlord', 'name email');
+    // Even for tenants, contact details are hidden until reservation fee is paid
+    const apartment = await Apartment.findById(apartmentId).populate('landlord', 'name');
     if (!apartment) {
       return res.status(404).json({ message: 'Apartment not found.' });
     }
@@ -60,7 +63,8 @@ router.get('/tenant/:id', authenticateToken, authorizeRoles('tenant'), async (re
 // Public: Get apartment details by ID
 router.get('/:id', async (req, res) => {
   try {
-    const apartment = await Apartment.findById(req.params.id).populate('landlord', 'name email');
+    // Only expose landlord name publicly (contact details hidden until reservation fee is paid)
+    const apartment = await Apartment.findById(req.params.id).populate('landlord', 'name');
     if (!apartment) {
       return res.status(404).json({ message: 'Apartment not found.' });
     }

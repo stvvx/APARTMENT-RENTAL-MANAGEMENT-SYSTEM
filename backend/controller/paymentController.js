@@ -1,6 +1,8 @@
 import Payment from '../model/Payment.js';
 import Apartment from '../model/Apartment.js';
 import Application from '../model/Application.js';
+import fs from 'fs';
+import path from 'path';
 
 const getNextMonthDueDate = () => {
   const dueDate = new Date();
@@ -32,7 +34,7 @@ const isFutureExpiry = (expiry) => {
 };
 
 const ensurePaymentsForApprovedApplications = async (tenantId) => {
-  const approvedApplications = await Application.find({ tenant: tenantId, status: 'approved' })
+  const approvedApplications = await Application.find({ tenant: tenantId, status: 'approved', isPaid: true })
     .populate('apartment', '_id price landlord');
 
   if (!approvedApplications.length) return;
@@ -162,13 +164,14 @@ export const getPaymentNotifications = async (req, res) => {
 // Tenant: submit payment for an outstanding bill
 export const submitTenantPayment = async (req, res) => {
   try {
-    const { paymentId, apartmentId, method, cardNumber, cvv, expiryDate } = req.body;
+    const { paymentId, apartmentId, method } = req.body;
 
     if (!paymentId || !method) {
       return res.status(400).json({ message: 'paymentId and method are required.' });
     }
 
-    const allowedMethods = ['cash', 'bank transfer'];
+    // Receipt-only payment methods
+    const allowedMethods = ['cash', 'bank transfer', 'gcash', 'paymaya'];
     if (!allowedMethods.includes(method)) {
       return res.status(400).json({ message: 'Invalid payment method.' });
     }
@@ -183,18 +186,20 @@ export const submitTenantPayment = async (req, res) => {
       payment = await Payment.findOne({
         tenant: req.user.userId,
         apartment: apartmentId,
-        status: { $in: ['unpaid', 'partial', 'late', 'pending'] }
+        status: { $in: ['unpaid', 'partial', 'late', 'pending'] },
+        paymentType: 'rent'
       });
 
       if (!payment) {
         const approvedApp = await Application.findOne({
           tenant: req.user.userId,
           apartment: apartmentId,
-          status: 'approved'
+          status: 'approved',
+          isPaid: true
         }).populate('apartment', '_id price landlord');
 
         if (!approvedApp || !approvedApp.apartment) {
-          return res.status(404).json({ message: 'No approved application found for this balance.' });
+          return res.status(404).json({ message: 'No approved + paid reservation found for this balance.' });
         }
 
         payment = await Payment.create({
@@ -203,7 +208,8 @@ export const submitTenantPayment = async (req, res) => {
           landlord: approvedApp.apartment.landlord,
           amount: approvedApp.apartment.price,
           dueDate: getNextMonthDueDate(),
-          status: 'unpaid'
+          status: 'unpaid',
+          paymentType: 'rent'
         });
       }
     } else {
@@ -218,56 +224,269 @@ export const submitTenantPayment = async (req, res) => {
       return res.status(400).json({ message: 'This payment is already marked as paid.' });
     }
 
+    // IMPORTANT: receipt-only flow => tenant method selection just marks it pending.
+    // Receipt upload + (admin/landlord) approval will complete the payment.
     payment.method = method;
+    payment.status = 'pending';
+    payment.paidDate = undefined;
+    await payment.save();
 
-    if (method === 'cash') {
-      payment.status = 'pending';
-      payment.paidDate = undefined;
-      payment.cardType = undefined;
-      payment.cardLast4 = undefined;
-      await payment.save();
-      return res.json({
-        message: 'Cash payment submitted and is pending landlord approval.',
-        payment
-      });
+    return res.json({
+      message: 'Payment method selected. Please upload your receipt for verification.',
+      payment
+    });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ----------------------------
+// Reservation fee flow
+// ----------------------------
+
+const RESERVATION_FEE_AMOUNT = 500;
+
+export const createReservationFeePayment = async (req, res) => {
+  try {
+    const { apartmentId } = req.body;
+
+    if (!apartmentId) {
+      return res.status(400).json({ message: 'apartmentId is required.' });
     }
 
-    if (method === 'bank transfer') {
-      if (!cardNumber || !cvv || !expiryDate) {
-        return res.status(400).json({ message: 'Card number, CSV, and expiry date are required for bank transfer.' });
-      }
+    const apartment = await Apartment.findById(apartmentId).select('_id landlord isAvailable');
+    if (!apartment) {
+      return res.status(404).json({ message: 'Apartment not found.' });
+    }
 
-      const digits = String(cardNumber).replace(/\D/g, '');
-      if (digits.length < 13 || digits.length > 19) {
-        return res.status(400).json({ message: 'Invalid card number.' });
-      }
+    // Ensure tenant has an approved application for this apartment
+    const application = await Application.findOne({
+      tenant: req.user.userId,
+      apartment: apartmentId,
+      status: 'approved'
+    });
 
-      const cardType = detectCardType(digits);
-      if (!cardType) {
-        return res.status(400).json({ message: 'Only Visa or Mastercard are supported.' });
-      }
+    if (!application) {
+      return res.status(403).json({ message: 'You need an approved application to pay the reservation fee.' });
+    }
 
-      if (!/^\d{3,4}$/.test(String(cvv))) {
-        return res.status(400).json({ message: 'Invalid CSV.' });
-      }
+    if (application.isPaid) {
+      return res.status(400).json({ message: 'Reservation fee is already paid for this apartment.' });
+    }
 
-      if (!isFutureExpiry(expiryDate)) {
-        return res.status(400).json({ message: 'Invalid or expired card date. Use MM/YY.' });
-      }
+    // If there is already an unpaid/pending reservation payment, return it
+    const existing = await Payment.findOne({
+      tenant: req.user.userId,
+      apartment: apartmentId,
+      paymentType: 'reservation',
+      status: { $in: ['unpaid', 'pending', 'partial', 'late'] }
+    });
 
-      payment.cardType = cardType;
-      payment.cardLast4 = digits.slice(-4);
+    if (existing) {
+      return res.status(200).json({ payment: existing });
+    }
+
+    const payment = await Payment.create({
+      tenant: req.user.userId,
+      apartment: apartmentId,
+      landlord: apartment.landlord,
+      amount: RESERVATION_FEE_AMOUNT,
+      dueDate: new Date(),
+      status: 'unpaid',
+      paymentType: 'reservation'
+    });
+
+    return res.status(201).json({ payment });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+export const getLandlordContactForApartment = async (req, res) => {
+  try {
+    const { apartmentId } = req.params;
+
+    // Must have paid reservation fee (application.isPaid) to view contact info
+    const application = await Application.findOne({
+      tenant: req.user.userId,
+      apartment: apartmentId,
+      status: 'approved'
+    });
+
+    if (!application || !application.isPaid) {
+      return res.status(403).json({ message: 'Pay the reservation fee to view landlord contact info.' });
+    }
+
+    const apartment = await Apartment.findById(apartmentId).populate('landlord', 'name email');
+    if (!apartment || !apartment.landlord) {
+      return res.status(404).json({ message: 'Apartment not found.' });
+    }
+
+    return res.json({
+      landlord: {
+        name: apartment.landlord.name,
+        email: apartment.landlord.email
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ----------------------------
+// Manual receipt upload + review flow
+// ----------------------------
+
+export const uploadReservationReceipt = async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+
+    const payment = await Payment.findOne({
+      _id: paymentId,
+      tenant: req.user.userId,
+      paymentType: 'reservation'
+    });
+
+    if (!payment) return res.status(404).json({ message: 'Reservation payment not found.' });
+
+    if (!req.file) return res.status(400).json({ message: 'Receipt file is required.' });
+
+    // store relative URL served by /uploads
+    payment.receiptUrl = `/uploads/${req.file.filename}`;
+    payment.receiptOriginalName = req.file.originalname;
+    payment.receiptMimeType = req.file.mimetype;
+    payment.receiptUploadedAt = new Date();
+
+    // after receipt upload, wait for admin verification
+    payment.status = 'pending';
+    payment.paidDate = undefined;
+
+    // IMPORTANT: do not override tenant-selected method.
+    // If tenant didn't pick a method yet, default to bank transfer.
+    payment.method = payment.method || 'bank transfer';
+
+    await payment.save();
+    return res.json({ message: 'Receipt uploaded. Waiting for admin verification.', payment });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+export const adminListReservationReceipts = async (req, res) => {
+  try {
+    const payments = await Payment.find({ paymentType: 'reservation' })
+      .populate('tenant', 'name email')
+      .populate('apartment', 'title location')
+      .sort({ receiptUploadedAt: -1, createdAt: -1 });
+
+    return res.json(payments);
+  } catch {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+export const adminReviewReservationReceipt = async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+    const { action } = req.body; // 'approve' | 'reject'
+
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ message: "action must be 'approve' or 'reject'." });
+    }
+
+    const payment = await Payment.findOne({ _id: paymentId, paymentType: 'reservation' });
+    if (!payment) return res.status(404).json({ message: 'Reservation payment not found.' });
+
+    if (payment.status !== 'pending') {
+      return res.status(400).json({ message: 'Only pending receipts can be reviewed.' });
+    }
+
+    if (action === 'reject') {
+      // keep receipt url for records, but mark unpaid again
+      payment.status = 'unpaid';
+      payment.paidDate = undefined;
+      await payment.save();
+      return res.json({ message: 'Reservation receipt rejected.', payment });
+    }
+
+    // approve
+    payment.status = 'paid';
+    payment.paidDate = new Date();
+    await payment.save();
+
+    // unlock: mark application as paid
+    await Application.updateOne(
+      { tenant: payment.tenant, apartment: payment.apartment },
+      { $set: { isPaid: true } }
+    );
+
+    return res.json({ message: 'Reservation receipt approved.', payment });
+  } catch {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+export const landlordReviewRentReceipt = async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+    const { action } = req.body; // 'approve' | 'reject'
+
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ message: "action must be 'approve' or 'reject'." });
+    }
+
+    // landlord can only review rent payments that belong to them
+    const payment = await Payment.findOne({ _id: paymentId, paymentType: 'rent', landlord: req.user.userId });
+    if (!payment) return res.status(404).json({ message: 'Payment not found.' });
+
+    if (payment.status !== 'pending') {
+      return res.status(400).json({ message: 'Only pending payments can be reviewed.' });
+    }
+
+    if (action === 'reject') {
+      payment.status = 'unpaid';
+      payment.paidDate = undefined;
+      await payment.save();
+      return res.json({ message: 'Payment rejected.', payment });
     }
 
     payment.status = 'paid';
     payment.paidDate = new Date();
     await payment.save();
 
-    return res.json({
-      message: `${method} payment submitted successfully.`,
-      payment
+    return res.json({ message: 'Payment approved.', payment });
+  } catch {
+    return res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+export const uploadRentReceipt = async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+
+    const payment = await Payment.findOne({
+      _id: paymentId,
+      tenant: req.user.userId,
+      paymentType: 'rent'
     });
-  } catch (err) {
+
+    if (!payment) return res.status(404).json({ message: 'Rent payment not found.' });
+
+    if (!req.file) return res.status(400).json({ message: 'Receipt file is required.' });
+
+    payment.receiptUrl = `/uploads/${req.file.filename}`;
+    payment.receiptOriginalName = req.file.originalname;
+    payment.receiptMimeType = req.file.mimetype;
+    payment.receiptUploadedAt = new Date();
+
+    // after receipt upload, wait for landlord verification
+    payment.status = 'pending';
+    payment.paidDate = undefined;
+    payment.method = payment.method || 'bank transfer';
+
+    await payment.save();
+    return res.json({ message: 'Receipt uploaded. Waiting for landlord verification.', payment });
+  } catch {
     return res.status(500).json({ message: 'Server error.' });
   }
 };

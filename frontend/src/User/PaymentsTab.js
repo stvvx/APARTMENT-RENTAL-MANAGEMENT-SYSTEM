@@ -5,7 +5,7 @@ import {
   MenuItem, Button, Select, InputLabel, FormControl, OutlinedInput,
 } from "@mui/material";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import TenantHeader from "../header/tenant_header";
 
 /* ─── Theme ─────────────────────────────────────────────────────── */
@@ -94,6 +94,12 @@ const detectCardType = (cardNumber) => {
 const fmt = (n) => Number(n || 0).toLocaleString("en-PH");
 const fmtDate = (d) =>
   d ? new Date(d).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }) : "—";
+
+const formatLocation = (loc) => {
+  if (!loc) return "—";
+  const parts = [loc.street, loc.barangay, loc.city].map((p) => String(p || "").trim()).filter(Boolean);
+  return parts.length ? parts.join(", ") : "—";
+};
 
 /* ─── Primitives ─────────────────────────────────────────────────── */
 
@@ -362,6 +368,9 @@ const StyledInput = ({ label, value, onChange, placeholder, type = "text", lette
 
 /* ─── Main Component ─────────────────────────────────────────────── */
 export default function PaymentsTab({ payForApartment }) {
+  const location = useLocation();
+  const reservation = location.state?.reservation;
+
   const navigate = useNavigate();
   const [balance, setBalance] = useState(null);
   const [allPayments, setAllPayments] = useState([]);
@@ -375,7 +384,14 @@ export default function PaymentsTab({ payForApartment }) {
   const [submitMessage, setSubmitMessage] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Reservation receipt upload
+  const [reservationReceipt, setReservationReceipt] = useState(null);
+  // Rent receipt upload
+  const [rentReceipt, setRentReceipt] = useState(null);
+  const [receiptUploading, setReceiptUploading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [payments, setPayments] = useState([]);
+  const [approvedApps, setApprovedApps] = useState([]);
   const token = localStorage.getItem("token");
   const isLoggedIn = !!token;
 
@@ -383,29 +399,79 @@ export default function PaymentsTab({ payForApartment }) {
   const outstandingToShow = Math.max(balance?.outstanding || 0, derivedOutstanding);
   const cardType = detectCardType(cardNumber);
 
-  const payablePayments = allPayments.filter(
-    (p) => p && p._id && ["unpaid", "partial", "late"].includes(p.status)
+  // Reservation fee must be paid first (before showing balances/rent payments)
+  const reservationPayments = Array.isArray(allPayments)
+    ? allPayments.filter((p) => String(p?.paymentType || "").toLowerCase() === "reservation")
+    : [];
+  const hasPaidReservation = reservationPayments.some(
+    (p) => String(p?.status || "").toLowerCase() === "paid"
   );
+
+  // Backwards compatible:
+  // - If tenant has reservation payment records, use those.
+  // - Only fall back to Application.isPaid gate when there are NO reservation payment records.
+  const unpaidReservationApps = reservationPayments.length > 0
+    ? []
+    : approvedApps.filter((a) => !a.isPaid);
+
+  const reservationBlocking = isLoggedIn && !loading && (
+    reservationPayments.length > 0 ? !hasPaidReservation : unpaidReservationApps.length > 0
+  );
+
+  // Only allow paying rent after reservation fee is approved/paid
+  const payablePayments = (reservationBlocking
+    ? []
+    : allPayments.filter((p) => p && p._id && ["unpaid", "partial", "late"].includes(p.status))
+  );
+
   const selectedPayment = payablePayments.find(
     (p) => String(p._id) === String(selectedPaymentId)
   );
 
   const fetchAll = async () => {
-    const [balRes, allRes, recRes, notifRes, approvedRes] = await Promise.all([
-      fetch("http://localhost:5000/api/payments/tenant/balance",       { headers: { Authorization: `Bearer ${token}` } }),
-      fetch("http://localhost:5000/api/payments/tenant",               { headers: { Authorization: `Bearer ${token}` } }),
-      fetch("http://localhost:5000/api/payments/tenant/receipts",      { headers: { Authorization: `Bearer ${token}` } }),
-      fetch("http://localhost:5000/api/payments/tenant/notifications", { headers: { Authorization: `Bearer ${token}` } }),
-      fetch("http://localhost:5000/api/applications/approved",         { headers: { Authorization: `Bearer ${token}` } }),
-    ]);
-    const [balData, allData, recData, notifData, approvedData] = await Promise.all([
-      balRes.json(), allRes.json(), recRes.json(), notifRes.json(), approvedRes.json(),
-    ]);
-    const approvedApps = Array.isArray(approvedData) ? approvedData : approvedData.applications || [];
-    setBalance(balData);
-    setAllPayments(mergePaymentsWithApprovedApps(allData, approvedApps));
-    setReceipts(Array.isArray(recData) ? recData : []);
-    setNotifications(Array.isArray(notifData) ? notifData : []);
+    if (!token) return;
+    setLoading(true);
+    try {
+      const [appsRes, payRes, balRes, recRes, notifRes] = await Promise.all([
+        fetch("http://localhost:5000/api/applications/mine", { headers: { Authorization: `Bearer ${token}` } }),
+        fetch("http://localhost:5000/api/payments/tenant", { headers: { Authorization: `Bearer ${token}` } }),
+        fetch("http://localhost:5000/api/payments/tenant/balance", { headers: { Authorization: `Bearer ${token}` } }),
+        fetch("http://localhost:5000/api/payments/tenant/receipts", { headers: { Authorization: `Bearer ${token}` } }),
+        fetch("http://localhost:5000/api/payments/tenant/notifications", { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+
+      const appsData = await appsRes.json();
+      const payData = await payRes.json();
+      const balData = await balRes.json();
+      const recData = await recRes.json();
+      const notifData = await notifRes.json();
+
+      const myApps = Array.isArray(appsData)
+        ? appsData
+        : Array.isArray(appsData?.applications)
+          ? appsData.applications
+          : [];
+      const approved = myApps.filter((a) => a.status === "approved");
+      setApprovedApps(approved);
+
+      setAllPayments(Array.isArray(payData) ? payData : []);
+      setBalance(balData?.outstanding ?? null);
+      setReceipts(Array.isArray(recData) ? recData : []);
+      setNotifications(Array.isArray(notifData) ? notifData : []);
+
+      // update derived lists
+      const merged = mergePaymentsWithApprovedApps(Array.isArray(payData) ? payData : [], approved);
+      setPayments(merged);
+    } catch {
+      setBalance(null);
+      setAllPayments([]);
+      setReceipts([]);
+      setNotifications([]);
+      setApprovedApps([]);
+      setPayments([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -420,37 +486,236 @@ export default function PaymentsTab({ payForApartment }) {
       .finally(() => setLoading(false));
   }, [token, isLoggedIn, payForApartment, navigate]);
 
-  const handleSubmitPayment = async (e) => {
-    e.preventDefault();
-    setSubmitMessage(""); setSubmitError("");
-    if (!selectedPaymentId || !paymentMethod) {
-      setSubmitError("Please select a payment and mode of payment."); return;
+  // If we arrive here right after reservation-fee submission, refresh once to reflect latest status.
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    if (location.state?.refreshPayments) {
+      fetchAll();
+      // clear navigation state so it doesn't refetch repeatedly
+      navigate("/payments", { replace: true, state: {} });
     }
-    if (paymentMethod === "bank transfer") {
-      if (!cardNumber || !csv || !expiryDate) {
-        setSubmitError("Card number, CVV, and expiry date are required for bank transfer."); return;
-      }
-      if (!cardType) { setSubmitError("Card must be Visa or Mastercard."); return; }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state, isLoggedIn]);
+
+  const handleSubmitPayment = async () => {
+    setSubmitMessage("");
+    setSubmitError("");
+
+    if (!selectedPayment) {
+      setSubmitError("Please select a payment to pay.");
+      return;
     }
+
+    if (!paymentMethod) {
+      setSubmitError("Please select a payment method.");
+      return;
+    }
+
+    // Receipt-only flow: we only save method and mark the payment pending.
     setSubmitting(true);
     try {
       const res = await fetch("http://localhost:5000/api/payments/tenant/pay", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          paymentId: selectedPaymentId,
-          apartmentId: selectedPayment?.apartment?._id || selectedPayment?.apartment,
-          method: paymentMethod, cardNumber, cvv: csv, expiryDate,
+          paymentId: selectedPayment._id,
+          apartmentId: selectedPayment.apartment?._id || selectedPayment.apartment,
+          method: paymentMethod,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setSubmitError(data?.message || "Failed to submit payment.");
+        return;
+      }
+
+      setSubmitMessage(data?.message || "Payment method saved. Upload your receipt next.");
+      await fetchAll();
+
+      // Clear method-only inputs
+      setSelectedPaymentId("");
+      setPaymentMethod("");
+      setCardNumber("");
+      setCsv("");
+      setExpiryDate("");
+    } catch {
+      setSubmitError("Failed to submit payment.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submitReservationPayment = async () => {
+    setSubmitError("");
+    setSubmitMessage("");
+
+    if (!reservation?.paymentId) {
+      setSubmitError("Missing reservation payment details.");
+      return;
+    }
+
+    if (!paymentMethod) {
+      setSubmitError("Please select a payment method.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/payments/tenant/pay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          paymentId: reservation.paymentId,
+          apartmentId: reservation.apartmentId,
+          method: paymentMethod,
         }),
       });
       const data = await res.json();
-      if (!res.ok) { setSubmitError(data?.message || "Failed to submit payment."); return; }
-      setSubmitMessage(data?.message || "Payment submitted successfully.");
-      setSelectedPaymentId(""); setPaymentMethod(""); setCardNumber(""); setCsv(""); setExpiryDate("");
+      if (!res.ok) {
+        setSubmitError(data?.message || "Failed to save payment method.");
+        return;
+      }
+      setSubmitMessage(data?.message || "Payment method saved.");
       await fetchAll();
-    } catch { setSubmitError("Failed to submit payment."); }
-    finally { setSubmitting(false); }
+    } catch {
+      setSubmitError("Failed to save payment method.");
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  const uploadReservationReceipt = async () => {
+    setSubmitError("");
+    setSubmitMessage("");
+
+    if (!reservation?.paymentId) {
+      setSubmitError("Missing reservation payment details.");
+      return;
+    }
+    if (!reservationReceipt) {
+      setSubmitError("Please choose a receipt file to upload.");
+      return;
+    }
+
+    if (!paymentMethod) {
+      setSubmitError("Please select a payment method before uploading your receipt.");
+      return;
+    }
+
+    // Ensure method is saved on payment first (receipt-only flow)
+    try {
+      await submitReservationPayment();
+    } catch {
+      // submitReservationPayment already sets errors
+      return;
+    }
+
+    setReceiptUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("receipt", reservationReceipt);
+
+      const res = await fetch(`http://localhost:5000/api/payments/tenant/reservation/${reservation.paymentId}/receipt`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setSubmitError(data?.message || "Failed to upload receipt.");
+        return;
+      }
+
+      setSubmitMessage(data?.message || "Receipt uploaded. Waiting for admin verification.");
+      setReservationReceipt(null);
+      await fetchAll();
+    } catch {
+      setSubmitError("Failed to upload receipt.");
+    } finally {
+      setReceiptUploading(false);
+    }
+  };
+
+  // Reservation fee must be paid first (before showing balances/rent payments)
+  // NOTE: unpaidReservationApps is already computed above.
+  if (!reservation && isLoggedIn && !loading && unpaidReservationApps.length > 0) {
+    return (
+      <ThemeProvider theme={theme}>
+        <TenantHeader />
+        <Box sx={{ minHeight: "100vh", background: T.surface, pt: { xs: 3, md: 5 }, pb: 8 }}>
+          <Box sx={{ maxWidth: 900, mx: "auto", px: { xs: 2, md: 4 } }}>
+            <Box sx={{ mb: 4, pb: 3, borderBottom: `1px solid ${T.border}` }}>
+              <Typography sx={{ fontWeight: 700, fontSize: { xs: 26, md: 32 }, color: T.charcoal, mb: 0.5 }}>
+                Reservation Fee Required
+              </Typography>
+              <Typography sx={{ color: T.muted, fontSize: 13 }}>
+                Pay the reservation fee first. After it is confirmed, your apartment payments will appear here.
+              </Typography>
+            </Box>
+
+            {submitError && <Toast type="error">{submitError}</Toast>}
+            {submitMessage && <Toast type="success">{submitMessage}</Toast>}
+
+            {unpaidReservationApps.map((app) => (
+              <PanelCard key={app._id}>
+                <CardHeader
+                  icon="🔒"
+                  title={app.apartment?.title || "Apartment"}
+                  subtitle={formatLocation(app.apartment?.location)}
+                />
+                <Box sx={{ px: { xs: 3, md: 4 }, py: 3, display: "flex", justifyContent: "flex-end" }}>
+                  <Button
+                    variant="contained"
+                    sx={{
+                      background: T.charcoal,
+                      color: "#fff",
+                      textTransform: "none",
+                      fontWeight: 700,
+                      borderRadius: 2,
+                      "&:hover": { background: "#111" },
+                    }}
+                    onClick={async () => {
+                      setSubmitError("");
+                      try {
+                        const res = await fetch("http://localhost:5000/api/payments/tenant/reservation", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({ apartmentId: app.apartment?._id || app.apartment }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) {
+                          setSubmitError(data?.message || "Failed to start reservation fee payment.");
+                          return;
+                        }
+
+                        navigate(`/reservation-fee/${data?.payment?._id}`, {
+                          state: {
+                            reservation: {
+                              apartmentId: app.apartment?._id || app.apartment,
+                              paymentId: data?.payment?._id,
+                              amount: data?.payment?.amount,
+                              apartmentTitle: app.apartment?.title,
+                              apartmentLocation: app.apartment?.location,
+                            },
+                          },
+                        });
+                      } catch {
+                        setSubmitError("Failed to start reservation fee payment.");
+                      }
+                    }}
+                  >
+                    Pay reservation fee
+                  </Button>
+                </Box>
+              </PanelCard>
+            ))}
+          </Box>
+        </Box>
+      </ThemeProvider>
+    );
+  }
 
   /* ── payForApartment mini-view ── */
   if (payForApartment) {
@@ -488,9 +753,30 @@ export default function PaymentsTab({ payForApartment }) {
           </PanelCard>
 
           <PanelCard>
-            <CardHeader icon="💳" title="Payment Form" subtitle="Complete your payment below" />
-            <Box sx={{ px: { xs: 3, md: 4 }, py: 3 }}>
-              <Typography sx={{ color: T.silver, fontSize: 14 }}>Payment form coming soon…</Typography>
+            <CardHeader icon="💳" title="Payment Form" subtitle="Choose how you want to pay" />
+            <Box component="form" onSubmit={handleSubmitPayment} sx={{ px: { xs: 3, md: 4 }, py: 3.5, display: "grid", gap: 2.5 }}>
+
+              {/* Mode of payment */}
+              <StyledSelect
+                label="Mode of Payment"
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+              >
+                <MenuItem value="gcash" sx={{ fontSize: 13.5 }}>📱&nbsp; GCash</MenuItem>
+                <MenuItem value="paymaya" sx={{ fontSize: 13.5 }}>📱&nbsp; PayMaya</MenuItem>
+                <MenuItem value="card" sx={{ fontSize: 13.5 }}>Card (Visa/Mastercard)</MenuItem>
+                <MenuItem value="bank transfer" sx={{ fontSize: 13.5 }}>Bank Transfer</MenuItem>
+                <MenuItem value="cash" sx={{ fontSize: 13.5 }}>Cash (with landlord approval)</MenuItem>
+              </StyledSelect>
+
+              <Box sx={{ pt: 1, borderTop: `1px solid ${T.border}`, display: "flex", justifyContent: "flex-end" }}>
+                <Button type="submit" disabled={submitting} sx={{ background: T.coral, color: "#fff", "&:hover": { background: T.coralDark }, textTransform: "none", fontWeight: 700, px: 4, py: 1.2, borderRadius: "6px" }}>
+                  {submitting ? "Processing…" : "Submit Payment"}
+                </Button>
+              </Box>
+
+              {submitMessage && <Toast type="success">{submitMessage}</Toast>}
+              {submitError && <Toast type="error">{submitError}</Toast>}
             </Box>
           </PanelCard>
         </Box>
@@ -592,53 +878,11 @@ export default function PaymentsTab({ payForApartment }) {
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value)}
                   >
+                    <MenuItem value="gcash" sx={{ fontSize: 13.5 }}>📱&nbsp; GCash</MenuItem>
+                    <MenuItem value="paymaya" sx={{ fontSize: 13.5 }}>📱&nbsp; PayMaya</MenuItem>
                     <MenuItem value="cash"          sx={{ fontSize: 13.5 }}>🏦&nbsp; Cash (with landlord approval)</MenuItem>
                     <MenuItem value="bank transfer"  sx={{ fontSize: 13.5 }}>💳&nbsp; Bank Transfer</MenuItem>
                   </StyledSelect>
-
-                  {/* Card details */}
-                  {paymentMethod === "bank transfer" && (
-                    <Box sx={{ p: 3, borderRadius: "6px", border: `1px solid ${T.border}`, background: T.surface, display: "grid", gap: 2.5 }}>
-                      <Typography sx={{ fontSize: 12, fontWeight: 700, color: T.silver, textTransform: "uppercase", letterSpacing: "0.9px" }}>
-                        Card Details
-                      </Typography>
-
-                      <StyledInput
-                        label="Card Number"
-                        value={cardNumber}
-                        onChange={(e) => setCardNumber(e.target.value.replace(/[^\d]/g, "").slice(0, 19))}
-                        placeholder="1234 5678 9012 3456"
-                        letterSpacing="2px"
-                      />
-
-                      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
-                        <StyledInput
-                          label="Expiry Date"
-                          value={expiryDate}
-                          onChange={(e) => {
-                            const digits = e.target.value.replace(/[^\d]/g, "").slice(0, 4);
-                            setExpiryDate(digits.length > 2 ? `${digits.slice(0, 2)}/${digits.slice(2)}` : digits);
-                          }}
-                          placeholder="MM/YY"
-                        />
-                        <StyledInput
-                          label="CVV"
-                          value={csv}
-                          onChange={(e) => setCsv(e.target.value.replace(/[^\d]/g, "").slice(0, 4))}
-                          placeholder="3–4 digits"
-                          type="password"
-                        />
-                      </Box>
-
-                      <CardTypeIndicator cardType={cardType} />
-
-                      {cardNumber && !cardType && (
-                        <Typography sx={{ color: T.orange, fontSize: 12, display: "flex", alignItems: "center", gap: 0.5 }}>
-                          ⚠ Only Visa and Mastercard are accepted
-                        </Typography>
-                      )}
-                    </Box>
-                  )}
 
                   {/* Submit */}
                   <Box sx={{ pt: 1, borderTop: `1px solid ${T.border}`, display: "flex", justifyContent: "flex-end" }}>
@@ -677,6 +921,139 @@ export default function PaymentsTab({ payForApartment }) {
                   {submitError   && <Toast type="error">{submitError}</Toast>}
                 </Box>
               </PanelCard>
+
+              {/* ── Selected Payment: upload receipt (rent) ── */}
+              {selectedPayment && (
+                <PanelCard>
+                  <CardHeader icon="🧾" title="Upload Receipt" subtitle="Upload proof of payment for the selected balance" />
+                  <Box sx={{ px: { xs: 3, md: 4 }, py: 3, display: 'grid', gap: 2.5 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Box>
+                        <Typography sx={{ fontWeight: 700 }}>{selectedPayment.apartment?.title || 'Apartment'}</Typography>
+                        <Typography sx={{ color: T.silver, fontSize: 13 }}>{formatLocation(selectedPayment.apartment?.location)}</Typography>
+                      </Box>
+                      <Box sx={{ textAlign: 'right' }}>
+                        <Typography sx={{ fontWeight: 800, color: T.coral, fontSize: 18 }}>₱{fmt(selectedPayment.amount)}</Typography>
+                        <Box sx={{ mt: 1 }}><StatusBadge status={selectedPayment.status} /></Box>
+                      </Box>
+                    </Box>
+
+                    {/* existing receipt preview */}
+                    {selectedPayment.receiptUrl && (
+                      <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                        <img src={selectedPayment.receiptUrl.startsWith('http') ? selectedPayment.receiptUrl : `http://localhost:5000${selectedPayment.receiptUrl}`} alt="receipt" style={{ maxWidth: 160, maxHeight: 120, objectFit: 'cover', borderRadius: 6, border: `1px solid ${T.border}` }} />
+                        <Box>
+                          <Typography sx={{ fontSize: 13, color: T.silver }}>Uploaded receipt</Typography>
+                          <Typography sx={{ fontSize: 13 }}>{selectedPayment.receiptOriginalName || '—'}</Typography>
+                        </Box>
+                      </Box>
+                    )}
+
+                    <Box>
+                      <input
+                        id="rent-receipt-input"
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={(e) => setRentReceipt(e.target.files?.[0] || null)}
+                        style={{ display: 'block' }}
+                      />
+                      <Typography sx={{ color: T.muted, fontSize: 12, mt: 1 }}>Supported: images or PDF. After uploading, the landlord will verify and mark the payment approved or rejected.</Typography>
+                    </Box>
+
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+                      <Button
+                        variant="outlined"
+                        disabled={!rentReceipt || receiptUploading}
+                        onClick={async () => { setRentReceipt(null); setSubmitMessage(''); setSubmitError(''); }}
+                      >
+                        Clear
+                      </Button>
+                      <Button
+                        variant="contained"
+                        sx={{ background: T.coral, color: '#fff', '&:hover': { background: T.coralDark }, textTransform: 'none', fontWeight: 700 }}
+                        disabled={!rentReceipt || receiptUploading}
+                        onClick={async () => {
+                          setSubmitMessage('');
+                          setSubmitError('');
+
+                          if (!selectedPayment || !selectedPayment._id) {
+                            setSubmitError('No payment selected.');
+                            return;
+                          }
+                          if (!paymentMethod) {
+                            setSubmitError('Please select a payment method above before uploading receipt.');
+                            return;
+                          }
+
+                          // ensure method saved for this payment first
+                          try {
+                            setSubmitting(true);
+                            const res = await fetch('http://localhost:5000/api/payments/tenant/pay', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                              body: JSON.stringify({ paymentId: selectedPayment._id, apartmentId: selectedPayment.apartment?._id || selectedPayment.apartment, method: paymentMethod }),
+                            });
+                            const data = await res.json();
+                            if (!res.ok) {
+                              setSubmitError(data?.message || 'Failed to save payment method.');
+                              setSubmitting(false);
+                              return;
+                            }
+                          } catch (err) {
+                            setSubmitError('Failed to save payment method.');
+                            setSubmitting(false);
+                            return;
+                          } finally {
+                            setSubmitting(false);
+                          }
+
+                          // upload receipt
+                          setReceiptUploading(true);
+                          try {
+                            const fd = new FormData();
+                            fd.append('receipt', rentReceipt);
+
+                            const up = await fetch(`http://localhost:5000/api/payments/tenant/rent/${selectedPayment._id}/receipt`, {
+                              method: 'POST',
+                              headers: { Authorization: `Bearer ${token}` },
+                              body: fd,
+                            });
+                            const upData = await up.json();
+                            if (!up.ok) {
+                              setSubmitError(upData?.message || 'Failed to upload receipt.');
+                              return;
+                            }
+
+                            setSubmitMessage(upData?.message || 'Receipt uploaded. Waiting for landlord verification.');
+                            setRentReceipt(null);
+
+                            // refresh now and then poll until status changes from pending
+                            await fetchAll();
+
+                            const pollId = setInterval(async () => {
+                              await fetchAll();
+                              const updated = (Array.isArray(allPayments) ? allPayments : []).find((p) => String(p._id) === String(selectedPayment._id));
+                              if (updated && String(updated.status).toLowerCase() !== 'pending') {
+                                clearInterval(pollId);
+                              }
+                            }, 5000);
+
+                          } catch (err) {
+                            setSubmitError('Failed to upload receipt.');
+                          } finally {
+                            setReceiptUploading(false);
+                          }
+                        }}
+                      >
+                        {receiptUploading ? 'Uploading…' : 'Upload Receipt'}
+                      </Button>
+                    </Box>
+
+                    {submitMessage && <Toast type="success">{submitMessage}</Toast>}
+                    {submitError && <Toast type="error">{submitError}</Toast>}
+                  </Box>
+                </PanelCard>
+              )}
 
               {/* ── Current Payments ── */}
               <SectionHeading>Current Payments</SectionHeading>

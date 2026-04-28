@@ -8,9 +8,19 @@ const paymentSchema = new mongoose.Schema({
   dueDate: { type: Date, required: true },
   paidDate: { type: Date },
   status: { type: String, enum: ['paid', 'unpaid', 'pending', 'late', 'partial'], default: 'unpaid' },
-  method: { type: String }, // e.g., cash, bank transfer
-  cardType: { type: String, enum: ['visa', 'mastercard'] },
-  cardLast4: { type: String },
+
+  // Manual payment method (for receipt-based verification)
+  method: { type: String, enum: ['gcash', 'paymaya', 'bank transfer', 'cash'] },
+
+  // distinguish reservation fee vs regular rent payments
+  paymentType: { type: String, enum: ['rent', 'reservation'], default: 'rent', index: true },
+
+  // Receipt upload (manual transactions)
+  receiptUrl: { type: String },
+  receiptOriginalName: { type: String },
+  receiptMimeType: { type: String },
+  receiptUploadedAt: { type: Date },
+
   createdAt: { type: Date, default: Date.now }
 });
 

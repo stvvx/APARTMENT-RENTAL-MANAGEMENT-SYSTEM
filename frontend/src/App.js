@@ -16,6 +16,8 @@ import ApplicationStatus from "./User/ApplicationStatus";
 import PaymentsTab from "./User/PaymentsTab";
 import Contact from "./User/Contact";
 import Footer from "./components/Footer";
+import AdminReservation from "./Admin/Admin_reservation";
+import ReservationFeePage from "./User/ReservationFeePage";
 
 export default function App() {
   return (
@@ -52,11 +54,21 @@ export default function App() {
                 </ProtectedAdminRoute>
               }
             />
+            <Route
+              path="/admin/reservations"
+              element={
+                <ProtectedAdminRoute>
+                  <AdminReservation />
+                </ProtectedAdminRoute>
+              }
+            />
             <Route path="/apartment/:id" element={<ApartmentDetails />} />
             <Route path="/wishlist" element={<Wishlist />} />
             <Route path="/profile" element={<ProfileTab />} />
             <Route path="/applications" element={<ApplicationStatus />} />
             <Route path="/payments" element={<PaymentsTab />} />
+            <Route path="/reservation-fee/:paymentId" element={<ReservationFeePage />} />
+            <Route path="/reservation-fee" element={<ReservationFeePage />} />
             <Route path="/contact" element={<Contact />} />
           </Routes>
         </div>

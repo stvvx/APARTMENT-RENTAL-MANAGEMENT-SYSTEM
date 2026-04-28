@@ -305,7 +305,7 @@ export default function Contact() {
   const token = localStorage.getItem("token");
   const user = JSON.parse(localStorage.getItem("user") || "{}");
 
-  const [formData, setFormData] = useState({ name: user?.name || "", email: user?.email || "", file: null });
+  const [formData, setFormData] = useState({ name: user?.name || "", email: user?.email || "" });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
@@ -318,44 +318,37 @@ export default function Contact() {
     setFormData((p) => ({ ...p, [name]: value }));
   };
 
-  const processFile = (file) => {
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { setError("File size must be less than 5MB"); return; }
-    setFormData((p) => ({ ...p, file }));
-    setError("");
-  };
-
-  const handleFileChange = (e) => processFile(e.target.files[0]);
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setDragOver(false);
-    processFile(e.dataTransfer.files[0]);
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(""); setSuccess("");
-    if (!formData.name.trim()) { setError("Name is required"); return; }
-    if (!formData.email.trim()) { setError("Email is required"); return; }
-    if (!formData.file) { setError("Government-issued ID is required"); return; }
+    setError("");
+    setSuccess("");
+    if (!formData.name.trim()) {
+      setError("Name is required");
+      return;
+    }
+    if (!formData.email.trim()) {
+      setError("Email is required");
+      return;
+    }
+
     setLoading(true);
     try {
-      const fd = new FormData();
-      fd.append("name", formData.name);
-      fd.append("email", formData.email);
-      fd.append("idDocument", formData.file);
       const res = await fetch("http://localhost:5000/api/tenant/apply-landlord", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: fd,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name: formData.name, email: formData.email }),
       });
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Application failed");
-      setSuccess("Application submitted! Our team will review it and contact you within 2–3 business days.");
-      setFormData({ name: user?.name || "", email: user?.email || "", file: null });
-      const fi = document.querySelector('input[type="file"]');
-      if (fi) fi.value = "";
+
+      setSuccess(
+        "Application submitted! Our team will review it and contact you within 2–3 business days."
+      );
+      setFormData({ name: user?.name || "", email: user?.email || "" });
     } catch (err) {
       setError(err.message || "Failed to submit application");
     } finally {
@@ -670,79 +663,50 @@ export default function Contact() {
                   <Box>
                     <FieldLabel required>Full Name</FieldLabel>
                     <StyledInput
-                      type="text" name="name" value={formData.name}
-                      onChange={handleInputChange} placeholder="Your full legal name"
+                      type="text"
+                      name="name"
+                      value={formData.name}
+                      onChange={handleInputChange}
+                      placeholder="Your full legal name"
                     />
                   </Box>
 
                   <Box>
                     <FieldLabel required>Registered Email</FieldLabel>
                     <StyledInput
-                      type="email" name="email" value={formData.email}
-                      onChange={handleInputChange} placeholder="your@email.com"
+                      type="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      placeholder="your@email.com"
                     />
                   </Box>
 
-                  {/* File Upload */}
-                  <Box>
-                    <FieldLabel required>Government-Issued ID</FieldLabel>
-                    <Box
-                      className="file-drop-zone"
-                      component="label"
-                      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                      onDragLeave={() => setDragOver(false)}
-                      onDrop={handleDrop}
+                  {/* Checklist */}
+                  <Box
+                    sx={{
+                      p: "16px 18px",
+                      borderRadius: "10px",
+                      background: "#FAFAF8",
+                      border: "1.5px solid #EAE6DE",
+                    }}
+                  >
+                    <Typography
                       sx={{
-                        display: "flex", flexDirection: "column", alignItems: "center",
-                        justifyContent: "center", gap: 1.5, p: "28px 20px",
-                        borderRadius: "12px",
-                        border: `2px dashed ${formData.file ? "#00A872" : dragOver ? "#C8102E" : "#D8D3CA"}`,
-                        background: formData.file
-                          ? "linear-gradient(135deg, #F0FAF7, #E8F8F3)"
-                          : dragOver ? "rgba(200,16,46,0.03)" : "#FAFAF8",
-                        cursor: "pointer",
+                        fontSize: 9.5,
+                        fontWeight: 700,
+                        color: "#B8B0A6",
+                        textTransform: "uppercase",
+                        letterSpacing: "1.4px",
+                        mb: 2,
+                        fontFamily: "'DM Sans', sans-serif",
                       }}
                     >
-                      <Box sx={{
-                        width: 44, height: 44, borderRadius: "12px",
-                        background: formData.file ? "linear-gradient(135deg, #E8F8F3, #D4F0E8)" : "#F0EDE8",
-                        border: `1px solid ${formData.file ? "#A8DCCC" : "#E4E0D8"}`,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 20,
-                      }}>
-                        {formData.file ? "✅" : "📎"}
-                      </Box>
-                      <Box sx={{ textAlign: "center" }}>
-                        <Typography sx={{
-                          fontSize: 13.5, fontWeight: 600,
-                          color: formData.file ? "#007A5E" : "#444",
-                          fontFamily: "'DM Sans', sans-serif", mb: 0.5,
-                        }}>
-                          {formData.file ? formData.file.name : "Drop file here or click to upload"}
-                        </Typography>
-                        <Typography sx={{ fontSize: 12, color: "#BBB5AD", fontFamily: "'DM Sans', sans-serif" }}>
-                          PDF, JPG, PNG or GIF · Max 5MB
-                        </Typography>
-                      </Box>
-                      <Box component="input" type="file" accept=".pdf,.jpg,.jpeg,.png,.gif" onChange={handleFileChange} sx={{ display: "none" }} />
-                    </Box>
-                  </Box>
-
-                  {/* Checklist */}
-                  <Box sx={{
-                    p: "16px 18px", borderRadius: "10px",
-                    background: "#FAFAF8", border: "1.5px solid #EAE6DE",
-                  }}>
-                    <Typography sx={{
-                      fontSize: 9.5, fontWeight: 700, color: "#B8B0A6",
-                      textTransform: "uppercase", letterSpacing: "1.4px", mb: 2,
-                      fontFamily: "'DM Sans', sans-serif",
-                    }}>
                       Before submitting, confirm:
                     </Typography>
-                    <CheckItem>ID is valid and has not expired</CheckItem>
                     <CheckItem>Name matches your registered account</CheckItem>
-                    <CheckItem>Document is clearly legible</CheckItem>
+                    <CheckItem>Email matches your registered account</CheckItem>
+                    <CheckItem>Contact details are correct</CheckItem>
                   </Box>
 
                   {/* Submit Button */}

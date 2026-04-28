@@ -12,6 +12,12 @@ const apartmentSchema = new mongoose.Schema({
   // --- Additional fields ---
   unitNumber: { type: String },
   buildingName: { type: String },
+  // NEW: structured location
+  location: {
+    street: { type: String, default: '' },
+    barangay: { type: String, default: '' },
+    city: { type: String, default: '' },
+  },
   area: { type: Number }, // in sqm
   bedrooms: { type: Number },
   bathrooms: { type: Number },
