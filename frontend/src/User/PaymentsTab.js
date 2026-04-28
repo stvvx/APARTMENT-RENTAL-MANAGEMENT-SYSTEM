@@ -530,15 +530,42 @@ export default function PaymentsTab({ payForApartment }) {
         return;
       }
 
-      setSubmitMessage(data?.message || "Payment method saved. Upload your receipt next.");
+      // If a receipt file is selected, upload it right after saving the method
+      if (rentReceipt) {
+        setReceiptUploading(true);
+        try {
+          const fd = new FormData();
+          fd.append("receipt", rentReceipt);
+
+          const up = await fetch(`http://localhost:5000/api/payments/tenant/rent/${selectedPayment._id}/receipt`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: fd,
+          });
+          const upData = await up.json();
+          if (!up.ok) {
+            setSubmitError(upData?.message || "Payment saved but failed to upload receipt.");
+          } else {
+            setSubmitMessage(upData?.message || "Payment submitted and receipt uploaded. Waiting for landlord verification.");
+          }
+        } catch {
+          setSubmitError("Payment saved but failed to upload receipt.");
+        } finally {
+          setReceiptUploading(false);
+        }
+      } else {
+        setSubmitMessage(data?.message || "Payment method saved. Upload your receipt next.");
+      }
+
       await fetchAll();
 
-      // Clear method-only inputs
+      // Clear inputs
       setSelectedPaymentId("");
       setPaymentMethod("");
       setCardNumber("");
       setCsv("");
       setExpiryDate("");
+      setRentReceipt(null);
     } catch {
       setSubmitError("Failed to submit payment.");
     } finally {
@@ -841,7 +868,7 @@ export default function PaymentsTab({ payForApartment }) {
                   Pay Balance Card
               ══════════════════════════════════════ */}
               <PanelCard>
-                <CardHeader icon="💳" title="Pay Balance" subtitle="Choose a balance and complete your payment" />
+                <CardHeader icon="💳" title="Pay Balance" subtitle="Choose a balance, upload your receipt, and complete your payment" />
 
                 <Box component="form" onSubmit={handleSubmitPayment} sx={{ px: { xs: 3, md: 4 }, py: 3.5, display: "grid", gap: 2.5 }}>
 
@@ -884,36 +911,94 @@ export default function PaymentsTab({ payForApartment }) {
                     <MenuItem value="bank transfer"  sx={{ fontSize: 13.5 }}>💳&nbsp; Bank Transfer</MenuItem>
                   </StyledSelect>
 
+                  {/* ── Receipt Upload (above submit) ── */}
+                  <Box>
+                    <Typography sx={{ fontSize: 10, fontWeight: 700, color: T.silver, textTransform: "uppercase", letterSpacing: "1px", mb: 0.75 }}>
+                      Upload Receipt (optional)
+                    </Typography>
+
+                    {/* Existing receipt preview if a payment is selected and already has a receipt */}
+                    {selectedPayment?.receiptUrl && (
+                      <Box sx={{ display: "flex", gap: 2, alignItems: "center", mb: 1.5, p: 1.5, borderRadius: "6px", border: `1px solid ${T.border}`, background: T.surface }}>
+                        <img
+                          src={selectedPayment.receiptUrl.startsWith("http") ? selectedPayment.receiptUrl : `http://localhost:5000${selectedPayment.receiptUrl}`}
+                          alt="receipt"
+                          style={{ maxWidth: 80, maxHeight: 60, objectFit: "cover", borderRadius: 4, border: `1px solid ${T.border}` }}
+                        />
+                        <Box>
+                          <Typography sx={{ fontSize: 12, color: T.silver }}>Current receipt</Typography>
+                          <Typography sx={{ fontSize: 13 }}>{selectedPayment.receiptOriginalName || "—"}</Typography>
+                        </Box>
+                      </Box>
+                    )}
+
+                    <Box
+                      sx={{
+                        border: `1.5px dashed ${rentReceipt ? T.teal : "#D1D5DB"}`,
+                        borderRadius: "6px",
+                        p: 2,
+                        background: rentReceipt ? T.tealBg : T.surface,
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <input
+                        id="rent-receipt-input"
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={(e) => setRentReceipt(e.target.files?.[0] || null)}
+                        style={{ display: "block", width: "100%", fontSize: 13 }}
+                      />
+                      {rentReceipt && (
+                        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mt: 1 }}>
+                          <Typography sx={{ fontSize: 12.5, color: T.teal, fontWeight: 600 }}>
+                            ✓ {rentReceipt.name}
+                          </Typography>
+                          <Button
+                            size="small"
+                            onClick={() => setRentReceipt(null)}
+                            sx={{ fontSize: 11, color: T.silver, textTransform: "none", minWidth: "auto", p: 0.25 }}
+                          >
+                            Remove
+                          </Button>
+                        </Box>
+                      )}
+                    </Box>
+
+                    <Typography sx={{ color: T.muted, fontSize: 12, mt: 0.75 }}>
+                      Supported: images or PDF. The landlord will verify and approve or reject your payment.
+                    </Typography>
+                  </Box>
+
                   {/* Submit */}
                   <Box sx={{ pt: 1, borderTop: `1px solid ${T.border}`, display: "flex", justifyContent: "flex-end" }}>
                     <Button
                       type="submit"
-                      disabled={submitting || payablePayments.length === 0}
+                      disabled={submitting || receiptUploading || payablePayments.length === 0}
                       sx={{
-                        background: (submitting || payablePayments.length === 0) ? "#F7F7F7" : T.coral,
-                        color: (submitting || payablePayments.length === 0) ? T.muted : "#fff",
+                        background: (submitting || receiptUploading || payablePayments.length === 0) ? "#F7F7F7" : T.coral,
+                        color: (submitting || receiptUploading || payablePayments.length === 0) ? T.muted : "#fff",
                         borderRadius: "6px",
                         textTransform: "none",
                         fontWeight: 600,
                         fontSize: 13.5,
                         px: 4,
                         py: 1.2,
-                        boxShadow: (submitting || payablePayments.length === 0) ? "none" : "0 2px 10px rgba(255,56,92,0.3)",
+                        boxShadow: (submitting || receiptUploading || payablePayments.length === 0) ? "none" : "0 2px 10px rgba(255,56,92,0.3)",
                         "&:hover": {
-                          background: (submitting || payablePayments.length === 0) ? "#F7F7F7" : T.coralDark,
-                          boxShadow: (submitting || payablePayments.length === 0) ? "none" : "0 4px 14px rgba(255,56,92,0.35)",
-                          transform: (submitting || payablePayments.length === 0) ? "none" : "translateY(-1px)",
+                          background: (submitting || receiptUploading || payablePayments.length === 0) ? "#F7F7F7" : T.coralDark,
+                          boxShadow: (submitting || receiptUploading || payablePayments.length === 0) ? "none" : "0 4px 14px rgba(255,56,92,0.35)",
+                          transform: (submitting || receiptUploading || payablePayments.length === 0) ? "none" : "translateY(-1px)",
                         },
                         "&:disabled": { opacity: 0.7 },
                         transition: "all 0.15s ease",
                       }}
                     >
-                      {submitting ? (
+                      {(submitting || receiptUploading) ? (
                         <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
                           <CircularProgress size={14} sx={{ color: T.muted }} />
-                          Processing…
+                          {receiptUploading ? "Uploading Receipt…" : "Processing…"}
                         </Box>
-                      ) : "Submit Payment"}
+                      ) : rentReceipt ? "Submit Payment & Upload Receipt" : "Submit Payment"}
                     </Button>
                   </Box>
 
@@ -921,139 +1006,6 @@ export default function PaymentsTab({ payForApartment }) {
                   {submitError   && <Toast type="error">{submitError}</Toast>}
                 </Box>
               </PanelCard>
-
-              {/* ── Selected Payment: upload receipt (rent) ── */}
-              {selectedPayment && (
-                <PanelCard>
-                  <CardHeader icon="🧾" title="Upload Receipt" subtitle="Upload proof of payment for the selected balance" />
-                  <Box sx={{ px: { xs: 3, md: 4 }, py: 3, display: 'grid', gap: 2.5 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Box>
-                        <Typography sx={{ fontWeight: 700 }}>{selectedPayment.apartment?.title || 'Apartment'}</Typography>
-                        <Typography sx={{ color: T.silver, fontSize: 13 }}>{formatLocation(selectedPayment.apartment?.location)}</Typography>
-                      </Box>
-                      <Box sx={{ textAlign: 'right' }}>
-                        <Typography sx={{ fontWeight: 800, color: T.coral, fontSize: 18 }}>₱{fmt(selectedPayment.amount)}</Typography>
-                        <Box sx={{ mt: 1 }}><StatusBadge status={selectedPayment.status} /></Box>
-                      </Box>
-                    </Box>
-
-                    {/* existing receipt preview */}
-                    {selectedPayment.receiptUrl && (
-                      <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                        <img src={selectedPayment.receiptUrl.startsWith('http') ? selectedPayment.receiptUrl : `http://localhost:5000${selectedPayment.receiptUrl}`} alt="receipt" style={{ maxWidth: 160, maxHeight: 120, objectFit: 'cover', borderRadius: 6, border: `1px solid ${T.border}` }} />
-                        <Box>
-                          <Typography sx={{ fontSize: 13, color: T.silver }}>Uploaded receipt</Typography>
-                          <Typography sx={{ fontSize: 13 }}>{selectedPayment.receiptOriginalName || '—'}</Typography>
-                        </Box>
-                      </Box>
-                    )}
-
-                    <Box>
-                      <input
-                        id="rent-receipt-input"
-                        type="file"
-                        accept="image/*,application/pdf"
-                        onChange={(e) => setRentReceipt(e.target.files?.[0] || null)}
-                        style={{ display: 'block' }}
-                      />
-                      <Typography sx={{ color: T.muted, fontSize: 12, mt: 1 }}>Supported: images or PDF. After uploading, the landlord will verify and mark the payment approved or rejected.</Typography>
-                    </Box>
-
-                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-                      <Button
-                        variant="outlined"
-                        disabled={!rentReceipt || receiptUploading}
-                        onClick={async () => { setRentReceipt(null); setSubmitMessage(''); setSubmitError(''); }}
-                      >
-                        Clear
-                      </Button>
-                      <Button
-                        variant="contained"
-                        sx={{ background: T.coral, color: '#fff', '&:hover': { background: T.coralDark }, textTransform: 'none', fontWeight: 700 }}
-                        disabled={!rentReceipt || receiptUploading}
-                        onClick={async () => {
-                          setSubmitMessage('');
-                          setSubmitError('');
-
-                          if (!selectedPayment || !selectedPayment._id) {
-                            setSubmitError('No payment selected.');
-                            return;
-                          }
-                          if (!paymentMethod) {
-                            setSubmitError('Please select a payment method above before uploading receipt.');
-                            return;
-                          }
-
-                          // ensure method saved for this payment first
-                          try {
-                            setSubmitting(true);
-                            const res = await fetch('http://localhost:5000/api/payments/tenant/pay', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                              body: JSON.stringify({ paymentId: selectedPayment._id, apartmentId: selectedPayment.apartment?._id || selectedPayment.apartment, method: paymentMethod }),
-                            });
-                            const data = await res.json();
-                            if (!res.ok) {
-                              setSubmitError(data?.message || 'Failed to save payment method.');
-                              setSubmitting(false);
-                              return;
-                            }
-                          } catch (err) {
-                            setSubmitError('Failed to save payment method.');
-                            setSubmitting(false);
-                            return;
-                          } finally {
-                            setSubmitting(false);
-                          }
-
-                          // upload receipt
-                          setReceiptUploading(true);
-                          try {
-                            const fd = new FormData();
-                            fd.append('receipt', rentReceipt);
-
-                            const up = await fetch(`http://localhost:5000/api/payments/tenant/rent/${selectedPayment._id}/receipt`, {
-                              method: 'POST',
-                              headers: { Authorization: `Bearer ${token}` },
-                              body: fd,
-                            });
-                            const upData = await up.json();
-                            if (!up.ok) {
-                              setSubmitError(upData?.message || 'Failed to upload receipt.');
-                              return;
-                            }
-
-                            setSubmitMessage(upData?.message || 'Receipt uploaded. Waiting for landlord verification.');
-                            setRentReceipt(null);
-
-                            // refresh now and then poll until status changes from pending
-                            await fetchAll();
-
-                            const pollId = setInterval(async () => {
-                              await fetchAll();
-                              const updated = (Array.isArray(allPayments) ? allPayments : []).find((p) => String(p._id) === String(selectedPayment._id));
-                              if (updated && String(updated.status).toLowerCase() !== 'pending') {
-                                clearInterval(pollId);
-                              }
-                            }, 5000);
-
-                          } catch (err) {
-                            setSubmitError('Failed to upload receipt.');
-                          } finally {
-                            setReceiptUploading(false);
-                          }
-                        }}
-                      >
-                        {receiptUploading ? 'Uploading…' : 'Upload Receipt'}
-                      </Button>
-                    </Box>
-
-                    {submitMessage && <Toast type="success">{submitMessage}</Toast>}
-                    {submitError && <Toast type="error">{submitError}</Toast>}
-                  </Box>
-                </PanelCard>
-              )}
 
               {/* ── Current Payments ── */}
               <SectionHeading>Current Payments</SectionHeading>
