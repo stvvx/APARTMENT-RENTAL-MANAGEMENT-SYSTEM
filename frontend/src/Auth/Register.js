@@ -59,18 +59,12 @@ export default function Register() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Registration failed");
-      
-      // Store token and user data
-      if (data.token) {
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("user", JSON.stringify(data.user));
-      }
-      
-      setSuccess("Registration successful! Redirecting to profile...");
+
+      setSuccess("Registration successful! Check your email for the OTP to verify your account...");
       setName("");
       setEmail("");
       setPassword("");
-      setTimeout(() => navigate("/profile"), 1200);
+      setTimeout(() => navigate("/verify-email", { state: { email: data.email || email } }), 900);
     } catch (err) {
       setError(err.message);
       setLoading(false);

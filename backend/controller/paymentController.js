@@ -317,15 +317,23 @@ export const getLandlordContactForApartment = async (req, res) => {
       return res.status(403).json({ message: 'Pay the reservation fee to view landlord contact info.' });
     }
 
-    const apartment = await Apartment.findById(apartmentId).populate('landlord', 'name email');
+    const apartment = await Apartment.findById(apartmentId).populate(
+      'landlord',
+      'name email contactNumber landlordApplication'
+    );
     if (!apartment || !apartment.landlord) {
       return res.status(404).json({ message: 'Apartment not found.' });
     }
 
+    const contactNumber =
+      apartment.landlord.contactNumber ||
+      apartment.landlord.landlordApplication?.contactNumber;
+
     return res.json({
       landlord: {
         name: apartment.landlord.name,
-        email: apartment.landlord.email
+        email: apartment.landlord.email,
+        contactNumber: contactNumber || ''
       }
     });
   } catch (err) {

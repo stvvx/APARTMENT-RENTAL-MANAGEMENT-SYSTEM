@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Homepage from "./Homepage";
 import Register from "./Auth/Register";
 import Login from "./Auth/Login";
+import VerifyEmail from "./Auth/VerifyEmail";
 import LandlordDashboard from "./Landlord/Landlord_dashboard";
 import TenantDashboard from "./User/Tenant_dashboard";
 import AdminDashboard from "./Admin/Admin_dashboard";
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="/" element={<Homepage />} />
             <Route path="/register" element={<Register />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/landlord/dashboard" element={<LandlordDashboard />} />
             <Route path="/tenant/dashboard" element={<TenantDashboard />} />
             <Route

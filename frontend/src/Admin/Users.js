@@ -240,7 +240,6 @@ const styles = {
 };
 
 export default function AdminUsers() {
-  const API_BASE = "http://localhost:5000";
   const token = localStorage.getItem("token");
   const currentUser = JSON.parse(localStorage.getItem("user") || "null");
   const [activeTab, setActiveTab] = useState("accounts");
@@ -248,6 +247,7 @@ export default function AdminUsers() {
   const [applications, setApplications] = useState([]);
   const [modal, setModal] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedApplication, setSelectedApplication] = useState(null);
   const [newRole, setNewRole] = useState("tenant");
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -268,30 +268,103 @@ export default function AdminUsers() {
     }
   };
 
-  const resolveDocumentUrl = (rawUrl) => {
-    if (!rawUrl || typeof rawUrl !== "string") return "";
-
-    if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
-      return rawUrl;
-    }
-
-    const normalized = rawUrl.replace(/\\/g, "/").replace(/^\/+/, "");
-
-    if (normalized.startsWith("uploads/")) {
-      return `${API_BASE}/${normalized}`;
-    }
-
-    return `${API_BASE}/${normalized}`;
+  const formatPeso = (value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "-";
+    return `₱${n.toLocaleString()}`;
   };
 
-  const getDocumentType = (application) => {
-    const mimeType = application?.landlordApplication?.idDocumentMimeType || "";
-    const rawUrl = application?.landlordApplication?.idDocumentURL || "";
-    const lowerUrl = rawUrl.toLowerCase();
+  const hasFirstListing = (app) => {
+    const listing = app?.landlordApplication?.firstListing;
+    if (!listing || typeof listing !== "object") return false;
+    if (listing.title) return true;
+    if (listing.price !== undefined && listing.price !== null && String(listing.price).trim() !== "") return true;
+    if (Array.isArray(listing.photos) && listing.photos.length) return true;
+    if (listing.unitType || listing.floor || listing.unitNumber || listing.buildingName) return true;
+    return false;
+  };
 
-    if (mimeType.includes("pdf") || lowerUrl.endsWith(".pdf")) return "pdf";
-    if (mimeType.startsWith("image/") || /\.(jpg|jpeg|png|webp)$/i.test(lowerUrl)) return "image";
-    return "file";
+  const openListingModal = (app) => {
+    setSelectedApplication(app);
+    setModal("listing");
+  };
+
+  const renderFirstListingPreview = (app) => {
+    const listing = app?.landlordApplication?.firstListing;
+    if (!hasFirstListing(app)) {
+      return <span style={{ color: "#717171" }}>-</span>;
+    }
+
+    const photos = Array.isArray(listing.photos) ? listing.photos.filter(Boolean) : [];
+    const street = listing.location?.street || app?.landlordApplication?.apartmentAddress || "";
+    const city = listing.location?.city || "";
+
+    return (
+      <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+        {photos.length > 0 ? (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxWidth: 160 }}>
+            {photos.slice(0, 3).map((url, idx) => (
+              <img
+                key={idx}
+                src={url}
+                alt={`Listing ${idx + 1}`}
+                style={{
+                  width: 44,
+                  height: 44,
+                  objectFit: "cover",
+                  borderRadius: 8,
+                  border: "1px solid #ebebeb",
+                  background: "#fff",
+                }}
+              />
+            ))}
+          </div>
+        ) : (
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 8,
+              border: "1px solid #ebebeb",
+              background: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 18,
+            }}
+            title="No photos"
+          >
+            🏠
+          </div>
+        )}
+
+        <div style={{ minWidth: 220 }}>
+          <div style={{ fontWeight: 700, color: "#222", marginBottom: 4 }}>
+            {listing.title || "(Untitled)"}
+          </div>
+          <div style={{ color: "#222", marginBottom: 4 }}>
+            <span style={{ fontWeight: 700 }}>{formatPeso(listing.price)}</span>
+            <span style={{ color: "#717171" }}> / month</span>
+          </div>
+          {(street || city) && (
+            <div style={{ color: "#717171", fontSize: 12, lineHeight: 1.4 }}>
+              {street}{city ? `, ${city}` : ""}
+            </div>
+          )}
+
+          <div style={{ marginTop: 10 }}>
+            <button
+              style={styles.actionButton}
+              onMouseEnter={(e) => (e.target.style.background = styles.editBtnHover.background)}
+              onMouseLeave={(e) => (e.target.style.background = "#fff")}
+              onClick={() => openListingModal(app)}
+            >
+              View
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const fetchUsers = async () => {
@@ -691,7 +764,8 @@ export default function AdminUsers() {
                     <th style={styles.tableHeaderCell}>Email</th>
                     <th style={styles.tableHeaderCell}>Status</th>
                     <th style={styles.tableHeaderCell}>Applied Date</th>
-                    <th style={styles.tableHeaderCell}>ID Document</th>
+                    <th style={styles.tableHeaderCell}>First Listing</th>
+                    <th style={styles.tableHeaderCell}>Contact Number</th>
                     <th style={styles.tableHeaderCell}>Actions</th>
                   </tr>
                 </thead>
@@ -735,26 +809,11 @@ export default function AdminUsers() {
                             ).toLocaleDateString()
                           : "-"}
                       </td>
+                      <td style={{ ...styles.tableCell, maxWidth: 420 }}>
+                        {renderFirstListingPreview(app)}
+                      </td>
                       <td style={styles.tableCell}>
-                        {app.landlordApplication?.idDocumentURL ? (
-                          <a
-                            href={resolveDocumentUrl(app.landlordApplication.idDocumentURL)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              color: "#FF385C",
-                              textDecoration: "underline",
-                            }}
-                          >
-                            {getDocumentType(app) === "pdf"
-                              ? "View PDF"
-                              : getDocumentType(app) === "image"
-                              ? "View Image"
-                              : "View Document"}
-                          </a>
-                        ) : (
-                          "-"
-                        )}
+                        {app.landlordApplication?.contactNumber || "-"}
                       </td>
                       <td style={styles.tableCell}>
                         {app.landlordApplication?.status === "pending" && (
@@ -921,6 +980,148 @@ export default function AdminUsers() {
                 {actionLoading ? "Deleting..." : "Delete User"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* First Listing Details Modal */}
+      {modal === "listing" && selectedApplication && (
+        <div
+          style={styles.modal}
+          onClick={() => {
+            setModal(null);
+            setSelectedApplication(null);
+          }}
+        >
+          <div
+            style={{ ...styles.modalContent, maxWidth: 1000, maxHeight: "90vh", overflow: "auto" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {(() => {
+              const app = selectedApplication;
+              const listing = app?.landlordApplication?.firstListing || null;
+              const photos = Array.isArray(listing?.photos) ? listing.photos.filter(Boolean) : [];
+              const amenities = Array.isArray(listing?.amenities) ? listing.amenities : [];
+              const utilities = Array.isArray(listing?.utilitiesIncluded) ? listing.utilitiesIncluded : [];
+
+              const street = listing?.location?.street || app?.landlordApplication?.apartmentAddress || "";
+              const barangay = listing?.location?.barangay || "";
+              const city = listing?.location?.city || "";
+
+              return (
+                <>
+                  <h2 style={styles.modalTitle}>First Listing Details</h2>
+                  <p style={styles.modalText}>
+                    Review the applicant’s submitted listing before approval.
+                  </p>
+
+                  {!hasFirstListing(app) ? (
+                    <div style={{ color: "#717171", fontSize: 14 }}>
+                      No first listing details were submitted.
+                    </div>
+                  ) : (
+                    <>
+                      {photos.length > 0 && (
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 18 }}>
+                          {photos.slice(0, 8).map((url, idx) => (
+                            <img
+                              key={idx}
+                              src={url}
+                              alt={`Listing ${idx + 1}`}
+                              style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 10, border: "1px solid #ebebeb", background: "#fff" }}
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      <div style={{ borderTop: "1px solid #ebebeb", paddingTop: 0 }}>
+                        {/* Unit Information */}
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#222", textTransform: "uppercase", letterSpacing: "0.5px", marginTop: 20, marginBottom: 12, paddingBottom: 8, borderBottom: "2px solid #FF385C" }}>
+                          Unit Information
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px 16px" }}>
+                          <div><div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>Unit Number</div><div style={{ fontSize: 14, fontWeight: 500, color: "#222" }}>{listing?.unitNumber || "-"}</div></div>
+                          <div><div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>Building Name</div><div style={{ fontSize: 14, fontWeight: 500, color: "#222" }}>{listing?.buildingName || "-"}</div></div>
+                          <div><div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>Floor</div><div style={{ fontSize: 14, fontWeight: 500, color: "#222" }}>{listing?.floor || "-"}</div></div>
+                          <div><div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>Unit Type</div><div style={{ fontSize: 14, fontWeight: 500, color: "#222" }}>{listing?.unitType || "-"}</div></div>
+                          <div><div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>Availability</div><div style={{ fontSize: 14, fontWeight: 500, color: "#222" }}>{listing?.isAvailable === false ? "Not available" : "Available"}</div></div>
+                        </div>
+
+                        {/* Location */}
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#222", textTransform: "uppercase", letterSpacing: "0.5px", marginTop: 20, marginBottom: 12, paddingBottom: 8, borderBottom: "2px solid #FF385C" }}>
+                          Location
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px 16px" }}>
+                          <div style={{ gridColumn: "1 / -1" }}><div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>Street</div><div style={{ fontSize: 14, fontWeight: 500, color: "#222" }}>{street || "-"}</div></div>
+                          <div><div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>Barangay</div><div style={{ fontSize: 14, fontWeight: 500, color: "#222" }}>{barangay || "-"}</div></div>
+                          <div><div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>City</div><div style={{ fontSize: 14, fontWeight: 500, color: "#222" }}>{city || "-"}</div></div>
+                        </div>
+
+                        {/* Specifications */}
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#222", textTransform: "uppercase", letterSpacing: "0.5px", marginTop: 20, marginBottom: 12, paddingBottom: 8, borderBottom: "2px solid #FF385C" }}>
+                          Specifications
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px 16px" }}>
+                          <div><div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>Area</div><div style={{ fontSize: 14, fontWeight: 500, color: "#222" }}>{listing?.area ? `${listing.area} sqm` : listing?.area === 0 ? "0 sqm" : "-"}</div></div>
+                          <div><div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>Bedrooms</div><div style={{ fontSize: 14, fontWeight: 500, color: "#222" }}>{listing?.bedrooms || listing?.bedrooms === 0 ? listing.bedrooms : "-"}</div></div>
+                          <div><div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>Bathrooms</div><div style={{ fontSize: 14, fontWeight: 500, color: "#222" }}>{listing?.bathrooms || "-"}</div></div>
+                          <div><div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>Furnishing</div><div style={{ fontSize: 14, fontWeight: 500, color: "#222" }}>{listing?.furnishing || "-"}</div></div>
+                          <div><div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>Pet Policy</div><div style={{ fontSize: 14, fontWeight: 500, color: "#222" }}>{listing?.petPolicy || "-"}</div></div>
+                        </div>
+
+                        {/* Pricing & Terms */}
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#222", textTransform: "uppercase", letterSpacing: "0.5px", marginTop: 20, marginBottom: 12, paddingBottom: 8, borderBottom: "2px solid #FF385C" }}>
+                          Pricing & Terms
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px 16px" }}>
+                          <div><div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>Security Deposit</div><div style={{ fontSize: 14, fontWeight: 500, color: "#222" }}>{listing?.deposit !== undefined && listing?.deposit !== null && String(listing?.deposit).trim() !== "" ? formatPeso(listing.deposit) : "-"}</div></div>
+                          <div><div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>Advance Payment</div><div style={{ fontSize: 14, fontWeight: 500, color: "#222" }}>{listing?.advance !== undefined && listing?.advance !== null && String(listing?.advance).trim() !== "" ? formatPeso(listing.advance) : "-"}</div></div>
+                          <div><div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>Min Lease Term</div><div style={{ fontSize: 14, fontWeight: 500, color: "#222" }}>{listing?.minLeaseTerm || "-"}</div></div>
+                          <div style={{ gridColumn: "1 / -1" }}><div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>Available From</div><div style={{ fontSize: 14, fontWeight: 500, color: "#222" }}>{listing?.availableFrom ? new Date(listing.availableFrom).toLocaleDateString() : "-"}</div></div>
+                        </div>
+
+                        {/* Amenities & Utilities */}
+                        {(amenities.length || utilities.length) && (
+                          <>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "#222", textTransform: "uppercase", letterSpacing: "0.5px", marginTop: 20, marginBottom: 12, paddingBottom: 8, borderBottom: "2px solid #FF385C" }}>
+                              Amenities & Utilities
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px 16px" }}>
+                              <div style={{ gridColumn: "1 / -1" }}><div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>Amenities</div><div style={{ fontSize: 14, fontWeight: 500, color: "#222" }}>{amenities.length ? amenities.join(", ") : "-"}</div></div>
+                              <div style={{ gridColumn: "1 / -1" }}><div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 4 }}>Utilities Included</div><div style={{ fontSize: 14, fontWeight: 500, color: "#222" }}>{utilities.length ? utilities.join(", ") : "-"}</div></div>
+                            </div>
+                          </>
+                        )}
+
+                        {/* Special Notes */}
+                        {listing?.specialNotes && (
+                          <>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "#222", textTransform: "uppercase", letterSpacing: "0.5px", marginTop: 20, marginBottom: 12, paddingBottom: 8, borderBottom: "2px solid #FF385C" }}>
+                              Special Notes
+                            </div>
+                            <div style={{ padding: "12px", background: "#fafafa", borderRadius: 8, borderLeft: "3px solid #FF385C", fontSize: 14, color: "#222", lineHeight: 1.6 }}>
+                              {listing.specialNotes}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  <div style={{ ...styles.modalButtons, marginTop: 28, paddingTop: 20, borderTop: "1px solid #ebebeb" }}>
+                    <button
+                      style={{ ...styles.modalButton, ...styles.cancelButton }}
+                      onClick={() => {
+                        setModal(null);
+                        setSelectedApplication(null);
+                      }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

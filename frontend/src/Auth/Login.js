@@ -53,7 +53,15 @@ export default function Login() {
         body: JSON.stringify({ email, password })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Login failed");
+      if (!res.ok) {
+        if (data?.needsEmailVerification) {
+          setSuccess("Account created — verify your email to continue.");
+          setLoading(false);
+          setTimeout(() => navigate("/verify-email", { state: { email: data.email || email } }), 600);
+          return;
+        }
+        throw new Error(data.message || "Login failed");
+      }
       setSuccess("Login successful!");
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));

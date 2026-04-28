@@ -677,9 +677,15 @@ export default function ApartmentDetails() {
                   </div>
                 ) : (
                   <div style={{ marginTop: 12 }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <span style={styles.infoLabel}>Email</span>
-                      <span style={styles.infoValue}>{contact.email}</span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <span style={styles.infoLabel}>Email</span>
+                        <span style={styles.infoValue}>{contact.email || "-"}</span>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <span style={styles.infoLabel}>Contact Number</span>
+                        <span style={styles.infoValue}>{contact.contactNumber || "-"}</span>
+                      </div>
                     </div>
                   </div>
                 )}

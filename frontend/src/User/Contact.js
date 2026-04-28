@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import { Box, Typography, CircularProgress } from "@mui/material";
 import TenantHeader from "../header/tenant_header";
+import cloudinaryConfig from "../cloudinaryConfig";
 
 const theme = createTheme({
   palette: {
@@ -305,17 +306,88 @@ export default function Contact() {
   const token = localStorage.getItem("token");
   const user = JSON.parse(localStorage.getItem("user") || "{}");
 
-  const [formData, setFormData] = useState({ name: user?.name || "", email: user?.email || "" });
+  const [formData, setFormData] = useState({
+    name: user?.name || "",
+    email: user?.email || "",
+    contactNumber: "",
+    apartmentAddress: "",
+    // First listing (aligned to landlord Add Apartment form)
+    title: "",
+    price: "",
+    floor: "",
+    unitType: "",
+    photos: [],
+    isAvailable: true,
+    unitNumber: "",
+    buildingName: "",
+    locationStreet: "",
+    locationBarangay: "",
+    locationCity: "",
+    area: "",
+    bedrooms: "",
+    bathrooms: "",
+    furnishing: "",
+    amenities: "",
+    petPolicy: "",
+    deposit: "",
+    advance: "",
+    minLeaseTerm: "",
+    availableFrom: "",
+    utilitiesIncluded: "",
+    specialNotes: "",
+  });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
   const todayIdx = new Date().getDay();
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+
+    if (name === "unitType") {
+      const val = value.trim().toLowerCase();
+      if (val === "studio") {
+        setFormData((p) => ({ ...p, unitType: value, bedrooms: 0 }));
+        return;
+      } else if (val === "1br") {
+        setFormData((p) => ({ ...p, unitType: value, bedrooms: 1 }));
+        return;
+      } else if (val === "2br") {
+        setFormData((p) => ({ ...p, unitType: value, bedrooms: 2 }));
+        return;
+      } else if (val === "3br") {
+        setFormData((p) => ({ ...p, unitType: value, bedrooms: 3 }));
+        return;
+      }
+    }
+
     setFormData((p) => ({ ...p, [name]: value }));
+  };
+
+  const handleImageUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setUploading(true);
+    try {
+      const urls = [];
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("upload_preset", cloudinaryConfig.CLOUDINARY_PRESET_NAME);
+        const res = await fetch(
+          `https://api.cloudinary.com/v1_1/${cloudinaryConfig.CLOUDINARY_CLOUD_NAME}/image/upload`,
+          { method: "POST", body: fd }
+        );
+        const data = await res.json();
+        if (data.secure_url) urls.push(data.secure_url);
+      }
+      setFormData((p) => ({ ...p, photos: urls }));
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -330,16 +402,77 @@ export default function Contact() {
       setError("Email is required");
       return;
     }
+    if (!formData.contactNumber.trim()) {
+      setError("Contact number is required");
+      return;
+    }
+    if (!formData.apartmentAddress.trim()) {
+      setError("Apartment address is required");
+      return;
+    }
+
+    const title = formData.title.trim();
+    const priceText = String(formData.price ?? "").trim();
+
+    let firstListingPayload = undefined;
+    if (title || priceText) {
+      if (!title || !priceText) {
+        setError("If you include a first listing, Title and Monthly Price are required.");
+        return;
+      }
+
+      const priceNumber = Number(formData.price);
+      if (Number.isNaN(priceNumber) || priceNumber <= 0) {
+        setError("Monthly rent must be a valid number greater than 0");
+        return;
+      }
+
+      firstListingPayload = {
+        title: formData.title,
+        price: priceNumber,
+        floor: formData.floor,
+        unitType: formData.unitType,
+        photos: formData.photos,
+        isAvailable: formData.isAvailable,
+        unitNumber: formData.unitNumber,
+        buildingName: formData.buildingName,
+        area: formData.area,
+        bedrooms: formData.bedrooms,
+        bathrooms: formData.bathrooms,
+        furnishing: formData.furnishing,
+        amenities: formData.amenities ? formData.amenities.split(",").map((a) => a.trim()).filter(Boolean) : [],
+        petPolicy: formData.petPolicy,
+        deposit: formData.deposit,
+        advance: formData.advance,
+        minLeaseTerm: formData.minLeaseTerm,
+        availableFrom: formData.availableFrom,
+        utilitiesIncluded: formData.utilitiesIncluded ? formData.utilitiesIncluded.split(",").map((u) => u.trim()).filter(Boolean) : [],
+        specialNotes: formData.specialNotes,
+        location: {
+          street: formData.locationStreet || formData.apartmentAddress,
+          barangay: formData.locationBarangay,
+          city: formData.locationCity,
+        },
+      };
+    }
 
     setLoading(true);
     try {
+      const body = {
+        name: formData.name,
+        email: formData.email,
+        contactNumber: formData.contactNumber,
+        apartmentAddress: formData.apartmentAddress,
+        ...(firstListingPayload ? { firstListing: firstListingPayload } : {}),
+      };
+
       const res = await fetch("http://localhost:5000/api/tenant/apply-landlord", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ name: formData.name, email: formData.email }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json();
@@ -348,7 +481,35 @@ export default function Contact() {
       setSuccess(
         "Application submitted! Our team will review it and contact you within 2–3 business days."
       );
-      setFormData({ name: user?.name || "", email: user?.email || "" });
+      setFormData({
+        name: user?.name || "",
+        email: user?.email || "",
+        contactNumber: "",
+        apartmentAddress: "",
+        title: "",
+        price: "",
+        floor: "",
+        unitType: "",
+        photos: [],
+        isAvailable: true,
+        unitNumber: "",
+        buildingName: "",
+        locationStreet: "",
+        locationBarangay: "",
+        locationCity: "",
+        area: "",
+        bedrooms: "",
+        bathrooms: "",
+        furnishing: "",
+        amenities: "",
+        petPolicy: "",
+        deposit: "",
+        advance: "",
+        minLeaseTerm: "",
+        availableFrom: "",
+        utilitiesIncluded: "",
+        specialNotes: "",
+      });
     } catch (err) {
       setError(err.message || "Failed to submit application");
     } finally {
@@ -672,7 +833,7 @@ export default function Contact() {
                   </Box>
 
                   <Box>
-                    <FieldLabel required>Registered Email</FieldLabel>
+                    <FieldLabel required>Email Address</FieldLabel>
                     <StyledInput
                       type="email"
                       name="email"
@@ -680,6 +841,400 @@ export default function Contact() {
                       onChange={handleInputChange}
                       placeholder="your@email.com"
                     />
+                  </Box>
+
+                  <Box>
+                    <FieldLabel required>Contact Number</FieldLabel>
+                    <StyledInput
+                      type="tel"
+                      name="contactNumber"
+                      value={formData.contactNumber}
+                      onChange={handleInputChange}
+                      placeholder="e.g. 09XXXXXXXXX"
+                    />
+                  </Box>
+
+                  <Box>
+                    <FieldLabel required>Apartment Address</FieldLabel>
+                    <StyledInput
+                      type="text"
+                      name="apartmentAddress"
+                      value={formData.apartmentAddress}
+                      onChange={handleInputChange}
+                      placeholder="Street, Barangay, City"
+                    />
+                  </Box>
+
+                  <Rule sx={{ my: 0.5 }} />
+
+                  <Box>
+                    <Typography sx={{
+                      fontSize: 10, fontWeight: 700, color: "#B8B0A6",
+                      textTransform: "uppercase", letterSpacing: "1.4px",
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}>
+                      First Apartment Listing (Optional)
+                    </Typography>
+                    <Typography sx={{
+                      fontSize: 13, color: "#777", mt: 0.8, lineHeight: 1.6,
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}>
+                      If you already have listing details, you can add them now. This will be added to your account once your landlord application is approved.
+                    </Typography>
+                  </Box>
+
+                  {/* Basic Info */}
+                  <Box>
+                    <FieldLabel required>Title</FieldLabel>
+                    <StyledInput
+                      type="text"
+                      name="title"
+                      value={formData.title}
+                      onChange={handleInputChange}
+                      placeholder="e.g. Cozy Studio in Makati"
+                    />
+                  </Box>
+
+                  <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+                    <Box>
+                      <FieldLabel>Unit Number</FieldLabel>
+                      <StyledInput
+                        type="text"
+                        name="unitNumber"
+                        value={formData.unitNumber}
+                        onChange={handleInputChange}
+                        placeholder="e.g. 4B"
+                      />
+                    </Box>
+                    <Box>
+                      <FieldLabel>Building Name</FieldLabel>
+                      <StyledInput
+                        type="text"
+                        name="buildingName"
+                        value={formData.buildingName}
+                        onChange={handleInputChange}
+                        placeholder="e.g. Alphaland Tower"
+                      />
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+                    <Box>
+                      <FieldLabel>Floor</FieldLabel>
+                      <StyledInput
+                        type="text"
+                        name="floor"
+                        value={formData.floor}
+                        onChange={handleInputChange}
+                        placeholder="e.g. 12th"
+                      />
+                    </Box>
+                    <Box>
+                      <FieldLabel>Unit Type</FieldLabel>
+                      <StyledInput
+                        type="text"
+                        name="unitType"
+                        value={formData.unitType}
+                        onChange={handleInputChange}
+                        placeholder="e.g. Studio, 1BR, 2BR"
+                      />
+                    </Box>
+                  </Box>
+
+                  {/* Pricing & Terms */}
+                  <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+                    <Box>
+                      <FieldLabel required>Monthly Price (₱)</FieldLabel>
+                      <StyledInput
+                        type="number"
+                        name="price"
+                        value={formData.price}
+                        onChange={handleInputChange}
+                        placeholder="0"
+                        min="1"
+                        step="1"
+                      />
+                    </Box>
+                    <Box>
+                      <FieldLabel>Area (sqm)</FieldLabel>
+                      <StyledInput
+                        type="number"
+                        name="area"
+                        value={formData.area}
+                        onChange={handleInputChange}
+                        placeholder="0"
+                      />
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+                    <Box>
+                      <FieldLabel>Security Deposit (₱)</FieldLabel>
+                      <StyledInput
+                        type="number"
+                        name="deposit"
+                        value={formData.deposit}
+                        onChange={handleInputChange}
+                        placeholder="0"
+                      />
+                    </Box>
+                    <Box>
+                      <FieldLabel>Advance Payment (₱)</FieldLabel>
+                      <StyledInput
+                        type="number"
+                        name="advance"
+                        value={formData.advance}
+                        onChange={handleInputChange}
+                        placeholder="0"
+                      />
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+                    <Box>
+                      <FieldLabel>Minimum Lease Term</FieldLabel>
+                      <StyledInput
+                        type="text"
+                        name="minLeaseTerm"
+                        value={formData.minLeaseTerm}
+                        onChange={handleInputChange}
+                        placeholder="e.g. 6 months"
+                      />
+                    </Box>
+                    <Box>
+                      <FieldLabel>Available From</FieldLabel>
+                      <StyledInput
+                        type="date"
+                        name="availableFrom"
+                        value={formData.availableFrom}
+                        onChange={handleInputChange}
+                      />
+                    </Box>
+                  </Box>
+
+                  {/* Unit Details */}
+                  <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+                    <Box>
+                      <FieldLabel>Street</FieldLabel>
+                      <StyledInput
+                        type="text"
+                        name="locationStreet"
+                        value={formData.locationStreet}
+                        onChange={handleInputChange}
+                        placeholder="e.g. 123 Main St"
+                      />
+                    </Box>
+                    <Box>
+                      <FieldLabel>Barangay</FieldLabel>
+                      <StyledInput
+                        type="text"
+                        name="locationBarangay"
+                        value={formData.locationBarangay}
+                        onChange={handleInputChange}
+                        placeholder="e.g. Brgy. San Isidro"
+                      />
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+                    <Box>
+                      <FieldLabel>City</FieldLabel>
+                      <StyledInput
+                        type="text"
+                        name="locationCity"
+                        value={formData.locationCity}
+                        onChange={handleInputChange}
+                        placeholder="e.g. Cebu City"
+                      />
+                    </Box>
+                    <Box>
+                      <FieldLabel>Area (sqm)</FieldLabel>
+                      <StyledInput
+                        type="number"
+                        name="area"
+                        value={formData.area}
+                        onChange={handleInputChange}
+                        placeholder="0"
+                      />
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+                    <Box>
+                      <FieldLabel>Bedrooms</FieldLabel>
+                      <StyledInput
+                        type="number"
+                        name="bedrooms"
+                        value={formData.unitType.trim().toLowerCase() === "studio" ? 0 : formData.bedrooms}
+                        onChange={handleInputChange}
+                        placeholder="0"
+                        disabled={["studio", "1br", "2br", "3br"].includes(formData.unitType.trim().toLowerCase())}
+                      />
+                      {formData.unitType.trim().toLowerCase() === "studio" && (
+                        <Typography sx={{ fontSize: 11, color: "#AAA", mt: 0.5, fontFamily: "'DM Sans', sans-serif" }}>
+                          Studios have no separate bedrooms
+                        </Typography>
+                      )}
+                      {["1br", "2br", "3br"].includes(formData.unitType.trim().toLowerCase()) && (
+                        <Typography sx={{ fontSize: 11, color: "#AAA", mt: 0.5, fontFamily: "'DM Sans', sans-serif" }}>
+                          Bedrooms auto-set by unit type
+                        </Typography>
+                      )}
+                    </Box>
+                    <Box>
+                      <FieldLabel>Bathrooms</FieldLabel>
+                      <StyledInput
+                        type="number"
+                        name="bathrooms"
+                        value={formData.bathrooms}
+                        onChange={handleInputChange}
+                        placeholder="0"
+                      />
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2 }}>
+                    <Box>
+                      <FieldLabel>Furnishing</FieldLabel>
+                      <StyledInput
+                        type="text"
+                        name="furnishing"
+                        value={formData.furnishing}
+                        onChange={handleInputChange}
+                        placeholder="e.g. Fully furnished"
+                      />
+                    </Box>
+                    <Box>
+                      <FieldLabel>Pet Policy</FieldLabel>
+                      <StyledInput
+                        type="text"
+                        name="petPolicy"
+                        value={formData.petPolicy}
+                        onChange={handleInputChange}
+                        placeholder="e.g. No pets"
+                      />
+                    </Box>
+                  </Box>
+
+                  <Box>
+                    <FieldLabel>Amenities</FieldLabel>
+                    <StyledInput
+                      type="text"
+                      name="amenities"
+                      value={formData.amenities}
+                      onChange={handleInputChange}
+                      placeholder="e.g. Pool, Gym, Parking (comma-separated)"
+                    />
+                  </Box>
+
+                  <Box>
+                    <FieldLabel>Utilities Included</FieldLabel>
+                    <StyledInput
+                      type="text"
+                      name="utilitiesIncluded"
+                      value={formData.utilitiesIncluded}
+                      onChange={handleInputChange}
+                      placeholder="e.g. Water, Internet (comma-separated)"
+                    />
+                  </Box>
+
+                  <Box>
+                    <FieldLabel>Special Notes</FieldLabel>
+                    <StyledInput
+                      component="textarea"
+                      name="specialNotes"
+                      value={formData.specialNotes}
+                      onChange={handleInputChange}
+                      placeholder="Any additional notes for tenants…"
+                      style={{ minHeight: 96, resize: "vertical" }}
+                    />
+                  </Box>
+
+                  {/* Photos (Cloudinary) */}
+                  <Box>
+                    <Typography sx={{
+                      fontSize: 10, fontWeight: 700, color: "#B8B0A6",
+                      textTransform: "uppercase", letterSpacing: "1.4px",
+                      fontFamily: "'DM Sans', sans-serif",
+                      mb: 1,
+                    }}>
+                      Photos
+                    </Typography>
+                    <Box
+                      component="label"
+                      sx={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 1,
+                        py: 3,
+                        borderRadius: "10px",
+                        border: `2px dashed ${uploading ? "#C8102E" : "#E4E0D8"}`,
+                        background: uploading ? "rgba(200,16,46,0.05)" : "#FAFAF8",
+                        cursor: uploading ? "not-allowed" : "pointer",
+                        transition: "all 0.2s ease",
+                        "&:hover": uploading ? {} : { borderColor: "#C8102E", background: "rgba(200,16,46,0.02)" },
+                      }}
+                    >
+                      {uploading ? (
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                          <CircularProgress size={18} sx={{ color: "#C8102E" }} />
+                          <Typography sx={{ fontSize: 13.5, color: "#C8102E", fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>
+                            Uploading…
+                          </Typography>
+                        </Box>
+                      ) : (
+                        <>
+                          <Typography sx={{ fontSize: 24 }}>📷</Typography>
+                          <Typography sx={{ fontSize: 13.5, fontWeight: 600, color: "#1A1A1A", fontFamily: "'DM Sans', sans-serif" }}>
+                            {formData.photos.length > 0 ? "Change photos" : "Upload photos"}
+                          </Typography>
+                          <Typography sx={{ fontSize: 11.5, color: "#BBB5AD", fontFamily: "'DM Sans', sans-serif" }}>
+                            JPG, PNG or WEBP · Multiple files supported
+                          </Typography>
+                        </>
+                      )}
+                      <input type="file" accept="image/*" multiple hidden onChange={handleImageUpload} disabled={uploading} />
+                    </Box>
+
+                    {formData.photos.length > 0 && (
+                      <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap", mt: 2 }}>
+                        {formData.photos.map((url, i) => (
+                          <Box
+                            key={i}
+                            sx={{
+                              width: 80,
+                              height: 80,
+                              borderRadius: "8px",
+                              overflow: "hidden",
+                              border: "1px solid #EAE6DE",
+                              position: "relative",
+                            }}
+                          >
+                            <Box component="img" src={url} alt={`Preview ${i + 1}`} sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                            {i === 0 && (
+                              <Box sx={{
+                                position: "absolute",
+                                bottom: 0,
+                                left: 0,
+                                right: 0,
+                                background: "rgba(0,0,0,0.55)",
+                                color: "#fff",
+                                fontSize: 9,
+                                fontWeight: 700,
+                                textAlign: "center",
+                                py: 0.4,
+                                letterSpacing: "0.5px",
+                                fontFamily: "'DM Sans', sans-serif",
+                              }}>
+                                COVER
+                              </Box>
+                            )}
+                          </Box>
+                        ))}
+                      </Box>
+                    )}
                   </Box>
 
                   {/* Checklist */}

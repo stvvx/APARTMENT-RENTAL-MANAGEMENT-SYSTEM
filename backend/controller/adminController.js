@@ -121,8 +121,62 @@ export const approveLandlord = async (req, res) => {
     // Update user role to landlord and mark application as approved
     user.role = 'landlord';
     user.approved = true;
+    if (!user.landlordId) {
+      user.landlordId = `LL-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    }
     if (user.landlordApplication) {
       user.landlordApplication.status = 'approved';
+    }
+
+    if (!user.contactNumber && user.landlordApplication?.contactNumber) {
+      user.contactNumber = user.landlordApplication.contactNumber;
+    }
+
+    // Create the applicant's first apartment listing (required)
+    try {
+      const firstListing = user.landlordApplication?.firstListing;
+      const hasListingFields = firstListing?.title && typeof firstListing?.price === 'number';
+
+      if (hasListingFields && !user.landlordApplication.firstListingApartmentId) {
+        const unitType = firstListing.unitType || '';
+        const bedroomsVal = typeof firstListing.bedrooms === 'number' ? firstListing.bedrooms : undefined;
+        const finalBedrooms = unitType && String(unitType).toLowerCase() === 'studio' ? 1 : bedroomsVal;
+
+        const apartment = new Apartment({
+          landlord: user._id,
+          title: firstListing.title,
+          description: firstListing.description || '',
+          price: firstListing.price,
+          floor: firstListing.floor || '',
+          unitType,
+          photos: Array.isArray(firstListing.photos) ? firstListing.photos : [],
+          isAvailable: firstListing.isAvailable !== false,
+          unitNumber: firstListing.unitNumber || '',
+          buildingName: firstListing.buildingName || '',
+          location: {
+            street: firstListing.location?.street || user.landlordApplication.apartmentAddress || '',
+            barangay: firstListing.location?.barangay || '',
+            city: firstListing.location?.city || ''
+          },
+          area: firstListing.area,
+          bedrooms: finalBedrooms,
+          bathrooms: firstListing.bathrooms,
+          furnishing: firstListing.furnishing,
+          amenities: Array.isArray(firstListing.amenities) ? firstListing.amenities : [],
+          petPolicy: firstListing.petPolicy,
+          deposit: firstListing.deposit,
+          advance: firstListing.advance,
+          minLeaseTerm: firstListing.minLeaseTerm,
+          availableFrom: firstListing.availableFrom,
+          utilitiesIncluded: Array.isArray(firstListing.utilitiesIncluded) ? firstListing.utilitiesIncluded : [],
+          specialNotes: firstListing.specialNotes
+        });
+
+        await apartment.save();
+        user.landlordApplication.firstListingApartmentId = apartment._id;
+      }
+    } catch (listingErr) {
+      console.error('Approve landlord: failed creating first listing:', listingErr);
     }
 
     await user.save();
