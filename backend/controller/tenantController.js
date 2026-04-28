@@ -135,34 +135,26 @@ export const applyAsLandlord = async (req, res) => {
       floor: firstListingFloor
     };
 
-    const hasAnyListingField = listingFromBody
-      ? Boolean(
-          listingFromBody.title ||
-          listingFromBody.price !== undefined ||
-          listingFromBody.unitType ||
-          listingFromBody.floor ||
-          (Array.isArray(listingFromBody.photos) && listingFromBody.photos.length)
-        )
-      : Boolean(
-          firstListingTitle ||
-          firstListingPrice !== undefined ||
-          firstListingUnitType ||
-          firstListingFloor ||
-          firstListingDescription
-        );
+    const hasFallbackListing = Boolean(
+      firstListingTitle ||
+      firstListingPrice !== undefined ||
+      firstListingUnitType ||
+      firstListingFloor ||
+      firstListingDescription
+    );
 
-    const listing = hasAnyListingField ? (listingFromBody || fallbackListing) : null;
+    const listing = listingFromBody || (hasFallbackListing ? fallbackListing : null);
+    if (!listing) {
+      return res.status(400).json({ message: 'Your first apartment listing is required (Title and Monthly Price).' });
+    }
 
-    let priceNumber = undefined;
-    if (listing) {
-      if (!listing.title || listing.price === undefined || listing.price === null || String(listing.price).trim() === '') {
-        return res.status(400).json({ message: 'If you include a first listing, title and monthly rent are required.' });
-      }
+    if (!listing.title || listing.price === undefined || listing.price === null || String(listing.price).trim() === '') {
+      return res.status(400).json({ message: 'Your first apartment listing is required (Title and Monthly Price).' });
+    }
 
-      priceNumber = Number(listing.price);
-      if (Number.isNaN(priceNumber) || priceNumber <= 0) {
-        return res.status(400).json({ message: 'Monthly rent must be a valid number greater than 0.' });
-      }
+    const priceNumber = Number(listing.price);
+    if (Number.isNaN(priceNumber) || priceNumber <= 0) {
+      return res.status(400).json({ message: 'Monthly rent must be a valid number greater than 0.' });
     }
 
     const normalizeStringArray = (val) => {
@@ -171,19 +163,17 @@ export const applyAsLandlord = async (req, res) => {
       return [];
     };
 
-    const location = listing
-      ? (listing.location && typeof listing.location === 'object'
-          ? {
-              street: listing.location.street || '',
-              barangay: listing.location.barangay || '',
-              city: listing.location.city || ''
-            }
-          : {
-              street: listing.locationStreet || '',
-              barangay: listing.locationBarangay || '',
-              city: listing.locationCity || ''
-            })
-      : { street: apartmentAddress || '', barangay: '', city: '' };
+    const location = listing.location && typeof listing.location === 'object'
+      ? {
+          street: listing.location.street || '',
+          barangay: listing.location.barangay || '',
+          city: listing.location.city || ''
+        }
+      : {
+          street: listing.locationStreet || '',
+          barangay: listing.locationBarangay || '',
+          city: listing.locationCity || ''
+        };
 
     if (!location.street && apartmentAddress) location.street = apartmentAddress;
 
@@ -196,32 +186,30 @@ export const applyAsLandlord = async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
-    const firstListingForApplication = listing
-      ? {
-          title: listing.title,
-          description: listing.description || listing.firstListingDescription || '',
-          price: priceNumber,
-          floor: listing.floor || '',
-          unitType,
-          photos: Array.isArray(listing.photos) ? listing.photos : [],
-          isAvailable: listing.isAvailable !== false,
-          unitNumber: listing.unitNumber || '',
-          buildingName: listing.buildingName || '',
-          location,
-          area: listing.area === '' || listing.area === undefined ? undefined : Number(listing.area),
-          bedrooms: finalBedrooms,
-          bathrooms: listing.bathrooms === '' || listing.bathrooms === undefined ? undefined : Number(listing.bathrooms),
-          furnishing: listing.furnishing || '',
-          amenities: normalizeStringArray(listing.amenities),
-          petPolicy: listing.petPolicy || '',
-          deposit: listing.deposit === '' || listing.deposit === undefined ? undefined : Number(listing.deposit),
-          advance: listing.advance === '' || listing.advance === undefined ? undefined : Number(listing.advance),
-          minLeaseTerm: listing.minLeaseTerm || '',
-          availableFrom: listing.availableFrom ? new Date(listing.availableFrom) : undefined,
-          utilitiesIncluded: normalizeStringArray(listing.utilitiesIncluded),
-          specialNotes: listing.specialNotes || ''
-        }
-      : undefined;
+    const firstListingForApplication = {
+      title: listing.title,
+      description: listing.description || listing.firstListingDescription || '',
+      price: priceNumber,
+      floor: listing.floor || '',
+      unitType,
+      photos: Array.isArray(listing.photos) ? listing.photos : [],
+      isAvailable: listing.isAvailable !== false,
+      unitNumber: listing.unitNumber || '',
+      buildingName: listing.buildingName || '',
+      location,
+      area: listing.area === '' || listing.area === undefined ? undefined : Number(listing.area),
+      bedrooms: finalBedrooms,
+      bathrooms: listing.bathrooms === '' || listing.bathrooms === undefined ? undefined : Number(listing.bathrooms),
+      furnishing: listing.furnishing || '',
+      amenities: normalizeStringArray(listing.amenities),
+      petPolicy: listing.petPolicy || '',
+      deposit: listing.deposit === '' || listing.deposit === undefined ? undefined : Number(listing.deposit),
+      advance: listing.advance === '' || listing.advance === undefined ? undefined : Number(listing.advance),
+      minLeaseTerm: listing.minLeaseTerm || '',
+      availableFrom: listing.availableFrom ? new Date(listing.availableFrom) : undefined,
+      utilitiesIncluded: normalizeStringArray(listing.utilitiesIncluded),
+      specialNotes: listing.specialNotes || ''
+    };
 
     // Store landlord application data (no ID upload required)
     user.contactNumber = contactNumber;

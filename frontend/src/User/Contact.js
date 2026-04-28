@@ -414,47 +414,44 @@ export default function Contact() {
     const title = formData.title.trim();
     const priceText = String(formData.price ?? "").trim();
 
-    let firstListingPayload = undefined;
-    if (title || priceText) {
-      if (!title || !priceText) {
-        setError("If you include a first listing, Title and Monthly Price are required.");
-        return;
-      }
-
-      const priceNumber = Number(formData.price);
-      if (Number.isNaN(priceNumber) || priceNumber <= 0) {
-        setError("Monthly rent must be a valid number greater than 0");
-        return;
-      }
-
-      firstListingPayload = {
-        title: formData.title,
-        price: priceNumber,
-        floor: formData.floor,
-        unitType: formData.unitType,
-        photos: formData.photos,
-        isAvailable: formData.isAvailable,
-        unitNumber: formData.unitNumber,
-        buildingName: formData.buildingName,
-        area: formData.area,
-        bedrooms: formData.bedrooms,
-        bathrooms: formData.bathrooms,
-        furnishing: formData.furnishing,
-        amenities: formData.amenities ? formData.amenities.split(",").map((a) => a.trim()).filter(Boolean) : [],
-        petPolicy: formData.petPolicy,
-        deposit: formData.deposit,
-        advance: formData.advance,
-        minLeaseTerm: formData.minLeaseTerm,
-        availableFrom: formData.availableFrom,
-        utilitiesIncluded: formData.utilitiesIncluded ? formData.utilitiesIncluded.split(",").map((u) => u.trim()).filter(Boolean) : [],
-        specialNotes: formData.specialNotes,
-        location: {
-          street: formData.locationStreet || formData.apartmentAddress,
-          barangay: formData.locationBarangay,
-          city: formData.locationCity,
-        },
-      };
+    if (!title || !priceText) {
+      setError("First listing is required. Please provide Title and Monthly Price.");
+      return;
     }
+
+    const priceNumber = Number(formData.price);
+    if (Number.isNaN(priceNumber) || priceNumber <= 0) {
+      setError("Monthly rent must be a valid number greater than 0");
+      return;
+    }
+
+    const firstListingPayload = {
+      title: formData.title,
+      price: priceNumber,
+      floor: formData.floor,
+      unitType: formData.unitType,
+      photos: formData.photos,
+      isAvailable: formData.isAvailable,
+      unitNumber: formData.unitNumber,
+      buildingName: formData.buildingName,
+      area: formData.area,
+      bedrooms: formData.bedrooms,
+      bathrooms: formData.bathrooms,
+      furnishing: formData.furnishing,
+      amenities: formData.amenities ? formData.amenities.split(",").map((a) => a.trim()).filter(Boolean) : [],
+      petPolicy: formData.petPolicy,
+      deposit: formData.deposit,
+      advance: formData.advance,
+      minLeaseTerm: formData.minLeaseTerm,
+      availableFrom: formData.availableFrom,
+      utilitiesIncluded: formData.utilitiesIncluded ? formData.utilitiesIncluded.split(",").map((u) => u.trim()).filter(Boolean) : [],
+      specialNotes: formData.specialNotes,
+      location: {
+        street: formData.locationStreet || formData.apartmentAddress,
+        barangay: formData.locationBarangay,
+        city: formData.locationCity,
+      },
+    };
 
     setLoading(true);
     try {
@@ -463,7 +460,7 @@ export default function Contact() {
         email: formData.email,
         contactNumber: formData.contactNumber,
         apartmentAddress: formData.apartmentAddress,
-        ...(firstListingPayload ? { firstListing: firstListingPayload } : {}),
+        firstListing: firstListingPayload,
       };
 
       const res = await fetch("http://localhost:5000/api/tenant/apply-landlord", {
@@ -873,13 +870,13 @@ export default function Contact() {
                       textTransform: "uppercase", letterSpacing: "1.4px",
                       fontFamily: "'DM Sans', sans-serif",
                     }}>
-                      First Apartment Listing (Optional)
+                      First Apartment Listing
                     </Typography>
                     <Typography sx={{
                       fontSize: 13, color: "#777", mt: 0.8, lineHeight: 1.6,
                       fontFamily: "'DM Sans', sans-serif",
                     }}>
-                      If you already have listing details, you can add them now. This will be added to your account once your landlord application is approved.
+                      Provide your first listing details. This will be reviewed before your landlord application is approved.
                     </Typography>
                   </Box>
 
